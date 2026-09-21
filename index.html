@@ -211,9 +211,9 @@
       }
     });
 
-    // ---------- 설정 (간격 및 색상) ----------
-    const H_GAP = 40;   // 가로 간격 절반 유지
-    const V_GAP = 18;   // 형제 간 세로 기본 간격
+    // ---------- 설정 ----------
+    const H_GAP = 40;
+    const V_GAP = 18;
     const NUDGE = 20;
 
     const PALETTE = [
@@ -228,7 +228,6 @@
       { bd: '#ec4899', bg: '#fce7f3', sel: '#fbcfe8', ring: 'rgba(236,72,153,0.35)' },
       { bd: '#84cc16', bg: '#ecfccb', sel: '#d9f99d', ring: 'rgba(132,204,22,0.35)' }
     ];
-    // 연하고 부드러운 중심주제 색상 팔레트
     const ROOT_COLOR = { bd: '#38bdf8', bg: '#e0f2fe', sel: '#bae6fd', ring: 'rgba(56,189,248,0.45)' };
 
     // ---------- 상태 ----------
@@ -282,7 +281,6 @@
           nextId = data.nextId || 2;
           if (!byId(selectedNodeId)) selectedNodeId = rootNode().id;
           render();
-          centerOnNode(byId(selectedNodeId), false);
           isRemoteUpdating = false;
         } else {
           nodes = [{ id: 1, text: '중심 주제', parentId: null, isRoot: true, colorIndex: null, dx: 0, dy: 0 }];
@@ -340,7 +338,7 @@
       pushToCloud();
     }
 
-    // ---------- 영역 분리 레이아웃 알고리즘 (겹침/교차 완전 차단) ----------
+    // ---------- 레이아웃 계산 ----------
     function computeSubtreeBounds(n) {
       const ch = childrenOf(n.id);
       const myHeight = n.h || 36;
@@ -374,7 +372,6 @@
         if (idx > 0) childrenTotalH += V_GAP;
       });
 
-      // 자식 블록 전체를 부모의 중심점에 맞춤
       let curY = (n.y + n.h / 2) - (childrenTotalH / 2);
       const childX = n.x + n.w + H_GAP;
 
@@ -390,7 +387,11 @@
       el.className = 'node';
       el.dataset.id = n.id;
       el.addEventListener('mousedown', onNodeMouseDown);
-      el.addEventListener('dblclick', (e) => { e.stopPropagation(); selectNode(n.id, true); startEdit(); });
+      el.addEventListener('dblclick', (e) => { 
+        e.stopPropagation(); 
+        selectNode(n.id, false); 
+        startEdit(); // 더블클릭 시 편집 모드 진입 및 중앙 정렬
+      });
       canvas.appendChild(el);
       els[n.id] = el;
       return el;
@@ -423,7 +424,6 @@
         styleNodeEl(el, n);
       });
 
-      // 노드의 실제 렌더링 크기 실측
       nodes.forEach(n => {
         n.w = Math.max(els[n.id].offsetWidth, 55);
         n.h = Math.max(els[n.id].offsetHeight, 36);
@@ -488,24 +488,33 @@
     function selectNode(id, center) {
       selectedNodeId = id;
       nodes.forEach(n => { if (els[n.id]) styleNodeEl(els[n.id], n); });
+      // center 파라미터가 명시적으로 true일 때만 화면 이동
       if (center) centerOnNode(byId(id), true);
     }
+
     function goRoot() {
       if (isEditing) finishEdit(true, false);
       const r = rootNode();
       selectNode(r.id, false);
-      centerOnNode(r, true);
+      centerOnNode(r, true); // F6 / Esc 누르면 중심 주제로 이동
     }
+
     function measureText(t, bold) {
       measurer.style.fontWeight = bold ? '700' : '400';
       measurer.style.fontSize = bold ? '16px' : '14px';
       measurer.textContent = t || ' ';
       return measurer.offsetWidth;
     }
+
+    // 텍스트 입력 상태 진입 (이때 화면 중심으로 이동)
     function startEdit() {
       const n = byId(selectedNodeId);
       if (!n || isEditing) return;
       isEditing = true; editingId = n.id; editSnapshot = snapshot();
+
+      // 텍스트 입력창이 열릴 때 화면 중심으로 부드럽게 이동
+      centerOnNode(n, true);
+
       const el = els[n.id];
       el.textContent = '';
       const input = document.createElement('input');
@@ -516,8 +525,8 @@
       input.addEventListener('mousedown', e => e.stopPropagation());
       input.addEventListener('keydown', (e) => {
         e.stopPropagation();
-        if (e.key === 'Enter') { e.preventDefault(); finishEdit(true, true); }
-        else if (e.key === 'Escape') { e.preventDefault(); finishEdit(false, true); }
+        if (e.key === 'Enter') { e.preventDefault(); finishEdit(true, false); }
+        else if (e.key === 'Escape') { e.preventDefault(); finishEdit(false, false); }
         else if (e.key === 'Tab') { e.preventDefault(); finishEdit(true, false); addChild(); }
         else if (e.key === 'F6') { e.preventDefault(); goRoot(); }
       });
@@ -527,6 +536,7 @@
       render();
       input.focus(); input.select();
     }
+
     function finishEdit(commit, center) {
       if (!isEditing) return;
       const n = byId(editingId);
@@ -555,9 +565,10 @@
       nodes.push(n);
       saveState();
       render();
-      selectNode(n.id, true);
-      startEdit();
+      selectNode(n.id, false); // 단순 선택 시 화면 이동 X
+      startEdit();             // 입력창 열리며 중앙 이동
     }
+
     function addSibling() {
       const cur = byId(selectedNodeId);
       if (!cur) return;
@@ -569,9 +580,10 @@
       nodes.splice(idx + 1, 0, n);
       saveState();
       render();
-      selectNode(n.id, true);
-      startEdit();
+      selectNode(n.id, false); // 단순 선택 시 화면 이동 X
+      startEdit();             // 입력창 열리며 중앙 이동
     }
+
     function deleteNode() {
       const cur = byId(selectedNodeId);
       if (!cur || cur.isRoot) return;
@@ -585,8 +597,9 @@
       nodes = nodes.filter(n => !removeIds.has(n.id));
       saveState();
       render();
-      selectNode(parentId, true);
+      selectNode(parentId, false);
     }
+
     function reparent(node, newParent, pushUndo) {
       if (!node || !newParent || node.isRoot) return false;
       if (node.id === newParent.id || isDescendant(newParent, node.id)) return false;
@@ -598,15 +611,16 @@
       if (pushUndo) saveState();
       return true;
     }
+
     function moveToRoot() {
       const cur = byId(selectedNodeId);
       if (!cur || cur.isRoot) return;
       if (isEditing) finishEdit(true, false);
-      if (byId(cur.parentId).isRoot) { centerOnNode(cur, true); return; }
+      if (byId(cur.parentId).isRoot) { return; }
       reparent(cur, rootNode(), true);
       render();
-      centerOnNode(cur, true);
     }
+
     function nudge(dx, dy) {
       const cur = byId(selectedNodeId);
       if (!cur || cur.isRoot) return;
@@ -614,6 +628,7 @@
       saveState();
       render();
     }
+
     function resetOffsets(all) {
       const cur = byId(selectedNodeId);
       nodes.forEach(n => {
@@ -621,22 +636,23 @@
       });
       saveState();
       render();
-      centerOnNode(cur, true);
     }
+
     function restore(json) {
       nodes = JSON.parse(json);
       nodes.forEach(n => { if (n.id >= nextId) nextId = n.id + 1; });
       if (!byId(selectedNodeId)) selectedNodeId = rootNode().id;
       pushToCloud();
       render();
-      centerOnNode(byId(selectedNodeId), true);
     }
+
     function undo() {
       if (isEditing) finishEdit(true, false);
       if (!undoStack.length) return;
       redoStack.push(snapshot());
       restore(undoStack.pop());
     }
+
     function redo() {
       if (isEditing) finishEdit(true, false);
       if (!redoStack.length) return;
@@ -644,7 +660,7 @@
       restore(redoStack.pop());
     }
 
-    // ---------- 방향키 탐색 ----------
+    // ---------- 방향키 탐색 (선택만 변경, 화면 이동 X) ----------
     function navigate(dir) {
       const cur = byId(selectedNodeId);
       if (!cur) return;
@@ -677,7 +693,7 @@
           target = best;
         }
       }
-      if (target) selectNode(target.id, true);
+      if (target) selectNode(target.id, false); // 방향키 탐색 시 화면 이동 안 함
     }
 
     // ---------- 키보드 이벤트 ----------
@@ -711,7 +727,7 @@
       if (k === '0') { e.preventDefault(); setZoom(1); return; }
     }, true);
 
-    // ---------- 마우스 조작 ----------
+    // ---------- 마우스 조작 (단순 클릭 시 화면 이동 X) ----------
     let drag = null;
     let pan = null;
 
@@ -721,7 +737,7 @@
       const id = +this.dataset.id;
       if (isEditing && editingId !== id) finishEdit(true, false);
       if (isEditing) return;
-      selectNode(id, true);
+      selectNode(id, false); // 단순 마우스 클릭 시 화면 이동 안 함
       const n = byId(id);
       drag = { 
         id: id, 
@@ -803,7 +819,6 @@
               saveState(drag.snap);
             }
             render();
-            centerOnNode(n, true);
           } else {
             saveState(drag.snap);
             render();
