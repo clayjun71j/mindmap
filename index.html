@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>단축키 마인드맵 (실시간 동기화)</title>
+  <!-- Firebase SDK 라이브러리 추가 -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Malgun Gothic", sans-serif;
+      width: 100vw; height: 100vh; overflow: hidden; background-color: #f1f5f9;
+    }
+    #toolbar {
+      position: fixed; top: 12px; left: 12px; z-index: 1000;
+      background: #ffffff; padding: 8px 12px; border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      display: flex; flex-wrap: wrap; gap: 6px 14px;
+      font-size: 12px; color: #475569; user-select: none;
+      max-width: calc(100vw - 24px);
+    }
+    #toolbar .item { cursor: pointer; white-space: nowrap; }
+    #toolbar .item:hover { color: #1d4ed8; }
+    #toolbar .sep { width: 1px; background: #e2e8f0; align-self: stretch; }
+    .kbd {
+      background: #e2e8f0; border-radius: 4px; padding: 1px 5px;
+      font-family: Consolas, monospace; font-size: 11px; color: #1e293b; margin-right: 3px;
+    }
+    #sync-status {
+      font-weight: 600; color: #10b981; display: flex; align-items: center; gap: 4px;
+    }
+    #hint {
+      position: fixed; bottom: 12px; left: 12px; z-index: 1000;
+      font-size: 12px; color: #64748b; background: rgba(255,255,255,0.9);
+      padding: 5px 10px; border-radius: 6px; pointer-events: none; line-height: 1.6;
+    }
+    #viewport { position: absolute; inset: 0; overflow: hidden; cursor: grab; }
+    #viewport.panning { cursor: grabbing; }
+    #world {
+      position: absolute; left: 0; top: 0; transform-origin: 0 0;
+      transition: transform 0.22s ease-out; will-change: transform;
+    }
+    #world.notrans { transition: none; }
+    #svg-lines {
+      position: absolute; left: 0; top: 0; width: 1px; height: 1px;
+      overflow: visible; pointer-events: none;
+    }
+    .node {
+      position: absolute; padding: 8px 16px; border-radius: 20px;
+      border: 2px solid #94a3b8; background: #ffffff;
+      font-size: 14px; color: #1e293b; white-space: nowrap;
+      cursor: pointer; user-select: none; text-align: center; min-width: 60px;
+      transition: background-color 0.15s, box-shadow 0.15s;
+    }
+    .node.root { font-weight: 700; font-size: 16px; padding: 10px 20px; color: #ffffff; }
+    .node.dragging { opacity: 0.75; pointer-events: none; z-index: 10; }
+    .node.drag-over { border-style: dashed; box-shadow: 0 0 0 3px rgba(37,99,235,0.35) !important; }
+    .node-input {
+      font-family: inherit; font-size: inherit; border: none; outline: none;
+      text-align: center; background: transparent; min-width: 60px;
+      color: inherit; font-weight: inherit;
+    }
+    #measurer {
+      position: absolute; visibility: hidden; white-space: pre; font-size: 14px;
+      font-family: inherit; top: -9999px; left: -9999px;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="toolbar">
+    <span class="item" data-action="child"><span class="kbd">Tab</span>하위 추가</span>
+    <span class="item" data-action="sibling"><span class="kbd">Enter</span>동일레벨 추가</span>
+    <span class="item" data-action="edit"><span class="kbd">F2</span>수정</span>
+    <span class="item" data-action="delete"><span class="kbd">Del</span>삭제</span>
+    <span class="item"><span class="kbd">방향키</span>선택 이동</span>
+    <span class="item" data-action="undo"><span class="kbd">Ctrl+Z</span>취소</span>
+    <span class="item" data-action="redo"><span class="kbd">Ctrl+Y</span>복구</span>
+    <span class="sep"></span>
+    <span class="item" data-action="root"><span class="kbd">F6 / Esc</span>중심 주제로</span>
+    <span class="item" data-action="toRoot"><span class="kbd">Ctrl+M</span>중심 주제 아래로 옮기기</span>
+    <span class="item"><span class="kbd">드래그</span>주제 옮기기</span>
+    <span class="item"><span class="kbd">Shift+방향키</span>미세 이동</span>
+    <span class="item" data-action="resetSel"><span class="kbd">A</span>위치 초기화</span>
+    <span class="item" data-action="resetAll"><span class="kbd">Shift+A</span>전체 자동 정렬</span>
+    <span class="sep"></span>
+    <span class="item" data-action="zoomIn"><span class="kbd">+</span></span>
+    <span class="item" data-action="zoomOut"><span class="kbd">-</span></span>
+    <span class="item" data-action="zoomReset"><span class="kbd">0</span>초기화</span>
+    <span class="sep"></span>
+    <span class="item" id="btn-copy-link" style="color:#2563eb; font-weight:bold;">🔗 주소 복사</span>
+    <span class="item" id="btn-new-map" style="color:#059669; font-weight:bold;">➕ 새 마인드맵</span>
+    <span id="sync-status">● 연결됨</span>
+  </div>
+
+  <div id="viewport">
+    <div id="world">
+      <svg id="svg-lines"></svg>
+      <div id="canvas"></div>
+    </div>
+  </div>
+
+  <div id="hint">
+    주제를 <b>드래그</b>하면 하위 가지까지 함께 이동 · 다른 주제 <b>위에 놓으면</b> 그 주제의 하위로 편입 ·
+    <b>Ctrl+M</b> 선택 주제를 중심 주제 바로 아래로 · <b>A</b> 선택 가지 위치 초기화 / <b>Shift+A</b> 전체 자동 정렬<br>
+    <b>현재 주소를 공유하면 여러 기기에서 실시간 동시 작업이 가능합니다.</b>
+  </div>
+  <span id="measurer"></span>
+
+  <script>
+    // ---------- Firebase 초기화 ----------
+    const firebaseConfig = {
+      apiKey: "AIzaSyA2nPDilvlr0kxGRZQz6eRmnEKS7KsMn7M",
+      authDomain: "mindmap-app-f3284.firebaseapp.com",
+      databaseURL: "https://mindmap-app-f3284-default-rtdb.firebaseio.com",
+      projectId: "mindmap-app-f3284",
+      storageBucket: "mindmap-app-f3284.firebasestorage.app",
+      messagingSenderId: "630331109014",
+      appId: "1:630331109014:web:fd4fbf287579d3460ddcb7"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // ---------- 방(마인드맵) 고유 ID 관리 ----------
+    function getRoomId() {
+      let hash = window.location.hash.replace('#', '').trim();
+      if (!hash) {
+        hash = 'map-' + Math.random().toString(36).substring(2, 8);
+        window.location.hash = hash;
+      }
+      return hash;
+    }
+    const currentRoomId = getRoomId();
+    const mapRef = db.ref('mindmaps/' + currentRoomId);
+
+    // ---------- 설정 ----------
+    const H_GAP = 70;
+    const V_GAP = 18;
+    const NUDGE = 20;
+
+    const PALETTE = [
+      { bd: '#ef4444', bg: '#fee2e2', sel: '#fecaca', ring: 'rgba(239,68,68,0.25)' },
+      { bd: '#f97316', bg: '#ffedd5', sel: '#fed7aa', ring: 'rgba(249,115,22,0.25)' },
+      { bd: '#eab308', bg: '#fef9c3', sel: '#fef08a', ring: 'rgba(234,179,8,0.25)' },
+      { bd: '#22c55e', bg: '#dcfce7', sel: '#bbf7d0', ring: 'rgba(34,197,94,0.25)' },
+      { bd: '#14b8a6', bg: '#ccfbf1', sel: '#99f6e4', ring: 'rgba(20,184,166,0.25)' },
+      { bd: '#0ea5e9', bg: '#e0f2fe', sel: '#bae6fd', ring: 'rgba(14,165,233,0.25)' },
+      { bd: '#6366f1', bg: '#e0e7ff', sel: '#c7d2fe', ring: 'rgba(99,102,241,0.25)' },
+      { bd: '#a855f7', bg: '#f3e8ff', sel: '#e9d5ff', ring: 'rgba(168,85,247,0.25)' },
+      { bd: '#ec4899', bg: '#fce7f3', sel: '#fbcfe8', ring: 'rgba(236,72,153,0.25)' },
+      { bd: '#84cc16', bg: '#ecfccb', sel: '#d9f99d', ring: 'rgba(132,204,22,0.25)' }
+    ];
+    const ROOT_COLOR = { bd: '#1d4ed8', bg: '#2563eb', sel: '#1e40af', ring: 'rgba(37,99,235,0.3)' };
+
+    // ---------- 상태 ----------
+    let nodes = [
+      { id: 1, text: '중심 주제', parentId: null, isRoot: true, colorIndex: null, dx: 0, dy: 0 }
+    ];
+    let nextId = 2;
+    let selectedNodeId = 1;
+    let isEditing = false;
+    let editingId = null;
+    let editSnapshot = null;
+
+    let zoom = 1.0, panX = 0, panY = 0;
+    let undoStack = [], redoStack = [];
+    let isRemoteUpdating = false;
+
+    const viewport = document.getElementById('viewport');
+    const world = document.getElementById('world');
+    const canvas = document.getElementById('canvas');
+    const svg = document.getElementById('svg-lines');
+    const measurer = document.getElementById('measurer');
+    const syncStatus = document.getElementById('sync-status');
+    const els = {};
+
+    // ---------- 실시간 클라우드 동기화 ----------
+    function pushToCloud() {
+      if (isRemoteUpdating) return;
+      syncStatus.textContent = '● 저장 중...';
+      syncStatus.style.color = '#f59e0b';
+      mapRef.set({
+        nodes: nodes,
+        nextId: nextId,
+        updatedAt: firebase.database.ServerValue.TIMESTAMP
+      }).then(() => {
+        syncStatus.textContent = '● 실시간 동기화됨';
+        syncStatus.style.color = '#10b981';
+      }).catch(err => {
+        syncStatus.textContent = '● 동기화 오류';
+        syncStatus.style.color = '#ef4444';
+        console.error(err);
+      });
+    }
+
+    mapRef.on('value', (snapshot) => {
+      const data = snapshot.val();
+      if (data && data.nodes) {
+        isRemoteUpdating = true;
+        nodes = data.nodes;
+        nextId = data.nextId || 2;
+        if (!byId(selectedNodeId)) selectedNodeId = rootNode().id;
+        render();
+        isRemoteUpdating = false;
+      } else {
+        // 새로 생성된 맵인 경우 초기 데이터 업로드
+        pushToCloud();
+      }
+    });
+
+    // ---------- 유틸 ----------
+    function byId(id) { return nodes.find(n => n.id === id); }
+    function rootNode() { return nodes.find(n => n.isRoot) || nodes[0]; }
+    function childrenOf(id) { return nodes.filter(n => n.parentId === id); }
+    function isDescendant(node, ancestorId) {
+      let cur = node;
+      while (cur && cur.parentId !== null) {
+        if (cur.parentId === ancestorId) return true;
+        cur = byId(cur.parentId);
+      }
+      return false;
+    }
+    function depthOf(n) {
+      let d = 0, cur = n;
+      while (cur && cur.parentId !== null) { d++; cur = byId(cur.parentId); }
+      return d;
+    }
+    function colorOf(n) {
+      if (n.isRoot) return ROOT_COLOR;
+      let cur = n;
+      while (cur && byId(cur.parentId) && !byId(cur.parentId).isRoot) cur = byId(cur.parentId);
+      const idx = (cur && cur.colorIndex != null) ? cur.colorIndex : 0;
+      return PALETTE[idx % PALETTE.length];
+    }
+    function freeColorIndex(excludeId) {
+      const r = rootNode();
+      if (!r) return 0;
+      const used = new Set(childrenOf(r.id).filter(n => n.id !== excludeId).map(n => n.colorIndex));
+      for (let i = 0; i < PALETTE.length; i++) if (!used.has(i)) return i;
+      return used.size % PALETTE.length;
+    }
+    function snapshot() {
+      return JSON.stringify(nodes.map(n => ({
+        id: n.id, text: n.text, parentId: n.parentId, isRoot: !!n.isRoot,
+        colorIndex: n.colorIndex == null ? null : n.colorIndex, dx: n.dx || 0, dy: n.dy || 0
+      })));
+    }
+    function saveState(snap) {
+      undoStack.push(snap || snapshot());
+      if (undoStack.length > 200) undoStack.shift();
+      redoStack = [];
+      pushToCloud(); // 변경 시 클라우드 실시간 전송
+    }
+
+    // ---------- 레이아웃 ----------
+    function subtreeH(n) {
+      const ch = childrenOf(n.id);
+      if (!ch.length) { n._sh = n.h; return n._sh; }
+      let s = 0;
+      ch.forEach(c => { s += subtreeH(c); });
+      s += V_GAP * (ch.length - 1);
+      n._sh = Math.max(n.h, s);
+      return n._sh;
+    }
+    function place(n, x, top) {
+      n.ax = x;
+      n.ay = top + (n._sh - n.h) / 2;
+      n.x = n.ax + (n.dx || 0);
+      n.y = n.ay + (n.dy || 0);
+      const ch = childrenOf(n.id);
+      if (!ch.length) return;
+      let total = 0;
+      ch.forEach(c => { total += c._sh; });
+      total += V_GAP * (ch.length - 1);
+      let cy = n.y + n.h / 2 - total / 2;
+      const cx = n.x + n.w + H_GAP;
+      ch.forEach(c => { place(c, cx, cy); cy += c._sh + V_GAP; });
+    }
+
+    // ---------- 렌더 ----------
+    function createNodeEl(n) {
+      const el = document.createElement('div');
+      el.className = 'node';
+      el.dataset.id = n.id;
+      el.addEventListener('mousedown', onNodeMouseDown);
+      el.addEventListener('dblclick', (e) => { e.stopPropagation(); selectNode(n.id, false); startEdit(); });
+      canvas.appendChild(el);
+      els[n.id] = el;
+      return el;
+    }
+    function styleNodeEl(el, n) {
+      const c = colorOf(n);
+      const selected = (n.id === selectedNodeId);
+      el.classList.toggle('root', !!n.isRoot);
+      el.classList.toggle('selected', selected);
+      el.style.borderColor = c.bd;
+      el.style.background = selected ? c.sel : c.bg;
+      el.style.boxShadow = selected ? ('0 0 0 3px ' + c.ring) : 'none';
+      if (!(isEditing && editingId === n.id)) el.textContent = n.text;
+    }
+    function render() {
+      const alive = new Set(nodes.map(n => n.id));
+      Object.keys(els).forEach(k => {
+        if (!alive.has(+k)) { els[k].remove(); delete els[k]; }
+      });
+      nodes.forEach(n => {
+        const el = els[n.id] || createNodeEl(n);
+        styleNodeEl(el, n);
+      });
+      nodes.forEach(n => { n.w = els[n.id].offsetWidth; n.h = els[n.id].offsetHeight; });
+      const root = rootNode();
+      if (root) {
+        subtreeH(root);
+        place(root, 0, 0);
+      }
+      nodes.forEach(n => {
+        if (els[n.id]) {
+          els[n.id].style.left = n.x + 'px';
+          els[n.id].style.top = n.y + 'px';
+        }
+      });
+      drawLines();
+    }
+    function drawLines() {
+      let s = '';
+      nodes.forEach(n => {
+        if (n.parentId === null) return;
+        const p = byId(n.parentId);
+        if (!p) return;
+        const x1 = p.x + p.w, y1 = p.y + p.h / 2;
+        const x2 = n.x, y2 = n.y + n.h / 2;
+        const mx = (x1 + x2) / 2;
+        const c = colorOf(n);
+        s += '<path d="M' + x1 + ' ' + y1 + ' C' + mx + ' ' + y1 + ', ' + mx + ' ' + y2 + ', ' + x2 + ' ' + y2 +
+             '" fill="none" stroke="' + c.bd + '" stroke-width="2" stroke-linecap="round"/>';
+      });
+      svg.innerHTML = s;
+    }
+
+    // ---------- 화면 이동/확대 ----------
+    function updateTransform() {
+      world.style.transform = 'translate(' + panX + 'px,' + panY + 'px) scale(' + zoom + ')';
+    }
+    function centerOnNode(n, animate) {
+      if (!n) return;
+      world.classList.toggle('notrans', animate === false);
+      panX = viewport.clientWidth / 2 - (n.x + n.w / 2) * zoom;
+      panY = viewport.clientHeight / 2 - (n.y + n.h / 2) * zoom;
+      updateTransform();
+    }
+    function setZoom(z, keepNode) {
+      zoom = Math.min(2.5, Math.max(0.3, z));
+      centerOnNode(keepNode || byId(selectedNodeId), true);
+    }
+    function zoomAt(factor, sx, sy) {
+      const nz = Math.min(2.5, Math.max(0.3, zoom * factor));
+      const wx = (sx - panX) / zoom, wy = (sy - panY) / zoom;
+      zoom = nz;
+      panX = sx - wx * zoom; panY = sy - wy * zoom;
+      world.classList.add('notrans');
+      updateTransform();
+    }
+
+    // ---------- 선택/편집 ----------
+    function selectNode(id, center) {
+      selectedNodeId = id;
+      nodes.forEach(n => { if (els[n.id]) styleNodeEl(els[n.id], n); });
+      if (center) centerOnNode(byId(id), true);
+    }
+    function goRoot() {
+      if (isEditing) finishEdit(true, false);
+      const r = rootNode();
+      selectNode(r.id, false);
+      centerOnNode(r, true);
+    }
+    function measureText(t, bold) {
+      measurer.style.fontWeight = bold ? '700' : '400';
+      measurer.style.fontSize = bold ? '16px' : '14px';
+      measurer.textContent = t || ' ';
+      return measurer.offsetWidth;
+    }
+    function startEdit() {
+      const n = byId(selectedNodeId);
+      if (!n || isEditing) return;
+      isEditing = true; editingId = n.id; editSnapshot = snapshot();
+      const el = els[n.id];
+      el.textContent = '';
+      const input = document.createElement('input');
+      input.className = 'node-input';
+      input.value = n.text;
+      const fit = () => { input.style.width = Math.max(60, measureText(input.value, n.isRoot) + 12) + 'px'; render(); };
+      input.addEventListener('input', fit);
+      input.addEventListener('mousedown', e => e.stopPropagation());
+      input.addEventListener('keydown', (e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') { e.preventDefault(); finishEdit(true, true); }
+        else if (e.key === 'Escape') { e.preventDefault(); finishEdit(false, true); }
+        else if (e.key === 'Tab') { e.preventDefault(); finishEdit(true, false); addChild(); }
+        else if (e.key === 'F6') { e.preventDefault(); goRoot(); }
+      });
+      input.addEventListener('blur', () => { if (isEditing && editingId === n.id) finishEdit(true, false); });
+      el.appendChild(input);
+      input.style.width = Math.max(60, measureText(n.text, n.isRoot) + 12) + 'px';
+      render();
+      input.focus(); input.select();
+    }
+    function finishEdit(commit, center) {
+      if (!isEditing) return;
+      const n = byId(editingId);
+      const el = els[editingId];
+      const input = el ? el.querySelector('input') : null;
+      isEditing = false;
+      const snap = editSnapshot;
+      editingId = null; editSnapshot = null;
+      if (n && input && commit) {
+        const v = input.value.trim();
+        if (v && v !== n.text) { 
+          n.text = v; 
+          saveState(snap);
+        }
+      }
+      render();
+      if (center && n) centerOnNode(n, true);
+    }
+
+    // ---------- 노드 조작 ----------
+    function addChild() {
+      const p = byId(selectedNodeId);
+      if (!p) return;
+      const n = { id: nextId++, text: '하위 주제', parentId: p.id, isRoot: false,
+                  colorIndex: p.isRoot ? freeColorIndex() : null, dx: 0, dy: 0 };
+      nodes.push(n);
+      saveState();
+      render();
+      selectNode(n.id, true);
+      startEdit();
+    }
+    function addSibling() {
+      const cur = byId(selectedNodeId);
+      if (!cur) return;
+      if (cur.isRoot) { addChild(); return; }
+      const p = byId(cur.parentId);
+      const n = { id: nextId++, text: '동일 주제', parentId: cur.parentId, isRoot: false,
+                  colorIndex: p && p.isRoot ? freeColorIndex() : null, dx: 0, dy: 0 };
+      const idx = nodes.indexOf(cur);
+      nodes.splice(idx + 1, 0, n);
+      saveState();
+      render();
+      selectNode(n.id, true);
+      startEdit();
+    }
+    function deleteNode() {
+      const cur = byId(selectedNodeId);
+      if (!cur || cur.isRoot) return;
+      const removeIds = new Set([cur.id]);
+      let changed = true;
+      while (changed) {
+        changed = false;
+        nodes.forEach(n => { if (n.parentId !== null && removeIds.has(n.parentId) && !removeIds.has(n.id)) { removeIds.add(n.id); changed = true; } });
+      }
+      const parentId = cur.parentId;
+      nodes = nodes.filter(n => !removeIds.has(n.id));
+      saveState();
+      render();
+      selectNode(parentId, true);
+    }
+    function reparent(node, newParent, pushUndo) {
+      if (!node || !newParent || node.isRoot) return false;
+      if (node.id === newParent.id || isDescendant(newParent, node.id)) return false;
+      node.parentId = newParent.id;
+      node.dx = 0; node.dy = 0;
+      if (newParent.isRoot) node.colorIndex = freeColorIndex(node.id);
+      nodes.splice(nodes.indexOf(node), 1);
+      nodes.push(node);
+      if (pushUndo) saveState();
+      return true;
+    }
+    function moveToRoot() {
+      const cur = byId(selectedNodeId);
+      if (!cur || cur.isRoot) return;
+      if (isEditing) finishEdit(true, false);
+      if (byId(cur.parentId).isRoot) { centerOnNode(cur, true); return; }
+      reparent(cur, rootNode(), true);
+      render();
+      centerOnNode(cur, true);
+    }
+    function nudge(dx, dy) {
+      const cur = byId(selectedNodeId);
+      if (!cur || cur.isRoot) return;
+      cur.dx = (cur.dx || 0) + dx; cur.dy = (cur.dy || 0) + dy;
+      saveState();
+      render();
+    }
+    function resetOffsets(all) {
+      const cur = byId(selectedNodeId);
+      nodes.forEach(n => {
+        if (all || n.id === cur.id || isDescendant(n, cur.id)) { n.dx = 0; n.dy = 0; }
+      });
+      saveState();
+      render();
+      centerOnNode(cur, true);
+    }
+    function restore(json) {
+      nodes = JSON.parse(json);
+      nodes.forEach(n => { if (n.id >= nextId) nextId = n.id + 1; });
+      if (!byId(selectedNodeId)) selectedNodeId = rootNode().id;
+      pushToCloud();
+      render();
+      centerOnNode(byId(selectedNodeId), true);
+    }
+    function undo() {
+      if (isEditing) finishEdit(true, false);
+      if (!undoStack.length) return;
+      redoStack.push(snapshot());
+      restore(undoStack.pop());
+    }
+    function redo() {
+      if (isEditing) finishEdit(true, false);
+      if (!redoStack.length) return;
+      undoStack.push(snapshot());
+      restore(redoStack.pop());
+    }
+
+    // ---------- 방향키 탐색 ----------
+    function navigate(dir) {
+      const cur = byId(selectedNodeId);
+      if (!cur) return;
+      let target = null;
+      if (dir === 'ArrowLeft') {
+        if (cur.parentId !== null) target = byId(cur.parentId);
+      } else if (dir === 'ArrowRight') {
+        const ch = childrenOf(cur.id);
+        if (ch.length) target = ch[Math.floor((ch.length - 1) / 2)];
+      } else {
+        const up = (dir === 'ArrowUp');
+        if (cur.parentId !== null) {
+          const sib = childrenOf(cur.parentId);
+          const i = sib.indexOf(cur);
+          if (up && i > 0) target = sib[i - 1];
+          if (!up && i < sib.length - 1) target = sib[i + 1];
+        }
+        if (!target) {
+          const d = depthOf(cur);
+          const cy = cur.y + cur.h / 2;
+          let best = null, bestDist = Infinity;
+          nodes.forEach(n => {
+            if (n.id === cur.id || depthOf(n) !== d) return;
+            const ny = n.y + n.h / 2;
+            if ((up && ny < cy) || (!up && ny > cy)) {
+              const dist = Math.abs(ny - cy) + Math.abs(n.x - cur.x) * 0.3;
+              if (dist < bestDist) { bestDist = dist; best = n; }
+            }
+          });
+          target = best;
+        }
+      }
+      if (target) selectNode(target.id, true);
+    }
+
+    // ---------- 키보드 이벤트 ----------
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'F6') { e.preventDefault(); e.stopPropagation(); goRoot(); return; }
+      if (isEditing) return;
+      const k = e.key;
+      if (e.ctrlKey && !e.shiftKey && (k === 'z' || k === 'Z')) { e.preventDefault(); undo(); return; }
+      if ((e.ctrlKey && (k === 'y' || k === 'Y')) || (e.ctrlKey && e.shiftKey && (k === 'z' || k === 'Z'))) { e.preventDefault(); redo(); return; }
+      if (e.ctrlKey && (k === 'm' || k === 'M')) { e.preventDefault(); moveToRoot(); return; }
+      if (e.ctrlKey || e.altKey || e.metaKey) return;
+
+      if (k === 'Escape' || k === 'Home' || k === '1') { e.preventDefault(); goRoot(); return; }
+      if (k === 'Tab') { e.preventDefault(); addChild(); return; }
+      if (k === 'Enter') { e.preventDefault(); addSibling(); return; }
+      if (k === 'F2') { e.preventDefault(); startEdit(); return; }
+      if (k === 'Delete' || k === 'Backspace') { e.preventDefault(); deleteNode(); return; }
+      if (k.startsWith('Arrow')) {
+        e.preventDefault();
+        if (e.shiftKey) {
+          if (k === 'ArrowLeft') nudge(-NUDGE, 0);
+          else if (k === 'ArrowRight') nudge(NUDGE, 0);
+          else if (k === 'ArrowUp') nudge(0, -NUDGE);
+          else nudge(0, NUDGE);
+        } else navigate(k);
+        return;
+      }
+      if (k === 'a' || k === 'A') { e.preventDefault(); resetOffsets(e.shiftKey); return; }
+      if (k === '+' || k === '=') { e.preventDefault(); setZoom(zoom * 1.2); return; }
+      if (k === '-' || k === '_') { e.preventDefault(); setZoom(zoom / 1.2); return; }
+      if (k === '0') { e.preventDefault(); setZoom(1); return; }
+    }, true);
+
+    // ---------- 마우스 조작 ----------
+    let drag = null;
+    let pan = null;
+
+    function onNodeMouseDown(e) {
+      if (e.button !== 0) return;
+      e.stopPropagation();
+      const id = +this.dataset.id;
+      if (isEditing && editingId !== id) finishEdit(true, false);
+      if (isEditing) return;
+      selectNode(id, false);
+      const n = byId(id);
+      drag = { id: id, sx: e.clientX, sy: e.clientY, odx: n.dx || 0, ody: n.dy || 0, moved: false, snap: snapshot(), over: null };
+      e.preventDefault();
+    }
+    viewport.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      if (e.target.closest && e.target.closest('.node')) return;
+      if (isEditing) finishEdit(true, false);
+      pan = { sx: e.clientX, sy: e.clientY, px: panX, py: panY };
+      viewport.classList.add('panning');
+      world.classList.add('notrans');
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (pan) {
+        panX = pan.px + (e.clientX - pan.sx);
+        panY = pan.py + (e.clientY - pan.sy);
+        updateTransform();
+        return;
+      }
+      if (drag) {
+        const n = byId(drag.id);
+        if (!n) { drag = null; return; }
+        const mx = e.clientX - drag.sx, my = e.clientY - drag.sy;
+        if (!drag.moved) {
+          if (Math.abs(mx) < 4 && Math.abs(my) < 4) return;
+          if (n.isRoot) { drag = null; return; }
+          drag.moved = true;
+          els[n.id].classList.add('dragging');
+        }
+        n.dx = drag.odx + mx / zoom;
+        n.dy = drag.ody + my / zoom;
+        render();
+
+        const under = document.elementFromPoint(e.clientX, e.clientY);
+        const overEl = under && under.closest ? under.closest('.node') : null;
+        let overId = overEl ? +overEl.dataset.id : null;
+        if (overId !== null) {
+          const t = byId(overId);
+          if (!t || t.id === n.id || t.id === n.parentId || isDescendant(t, n.id)) overId = null;
+        }
+        if (drag.over !== overId) {
+          if (drag.over !== null && els[drag.over]) els[drag.over].classList.remove('drag-over');
+          if (overId !== null) els[overId].classList.add('drag-over');
+          drag.over = overId;
+        }
+      }
+    });
+    window.addEventListener('mouseup', (e) => {
+      if (pan) { pan = null; viewport.classList.remove('panning'); return; }
+      if (drag) {
+        const n = byId(drag.id);
+        if (n && drag.moved) {
+          els[n.id].classList.remove('dragging');
+          if (drag.over !== null && els[drag.over]) els[drag.over].classList.remove('drag-over');
+          if (drag.over !== null) {
+            const t = byId(drag.over);
+            n.dx = drag.odx; n.dy = drag.ody;
+            if (reparent(n, t, false)) saveState(drag.snap);
+            render();
+            centerOnNode(n, true);
+          } else {
+            saveState(drag.snap);
+            render();
+          }
+        }
+        drag = null;
+      }
+    });
+    viewport.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      if (e.ctrlKey) {
+        zoomAt(e.deltaY < 0 ? 1.1 : 1 / 1.1, e.clientX, e.clientY);
+      } else {
+        world.classList.add('notrans');
+        panX -= e.deltaX; panY -= e.deltaY;
+        updateTransform();
+      }
+    }, { passive: false });
+
+    // ---------- 툴바 클릭 이벤트 ----------
+    document.getElementById('toolbar').addEventListener('click', (e) => {
+      const item = e.target.closest('.item');
+      if (!item) return;
+      const a = item.dataset.action;
+      if (isEditing && a !== 'edit') finishEdit(true, false);
+      if (a === 'child') addChild();
+      else if (a === 'sibling') addSibling();
+      else if (a === 'edit') startEdit();
+      else if (a === 'delete') deleteNode();
+      else if (a === 'undo') undo();
+      else if (a === 'redo') redo();
+      else if (a === 'root') goRoot();
+      else if (a === 'toRoot') moveToRoot();
+      else if (a === 'resetSel') resetOffsets(false);
+      else if (a === 'resetAll') resetOffsets(true);
+      else if (a === 'zoomIn') setZoom(zoom * 1.2);
+      else if (a === 'zoomOut') setZoom(zoom / 1.2);
+      else if (a === 'zoomReset') setZoom(1);
+    });
+
+    // 주소 복사 버튼
+    document.getElementById('btn-copy-link').addEventListener('click', () => {
+      navigator.clipboard.writeText(window.location.href).then(() => {
+        alert('마인드맵 공유 주소가 복사되었습니다!\n다른 브라우저나 스마트폰에서 붙여넣어 접속하세요.');
+      });
+    });
+
+    // 새 마인드맵 만들기 버튼
+    document.getElementById('btn-new-map').addEventListener('click', () => {
+      const newRoom = 'map-' + Math.random().toString(36).substring(2, 8);
+      const newUrl = window.location.origin + window.location.pathname + '#' + newRoom;
+      window.open(newUrl, '_blank');
+    });
+
+    window.addEventListener('resize', () => { centerOnNode(byId(selectedNodeId), false); });
+
+    // ---------- 초기 로드 ----------
+    render();
+    centerOnNode(rootNode(), false);
+  </script>
+</body>
+</html>
