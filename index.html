@@ -62,10 +62,10 @@
     .card-title { font-size: 16px; font-weight: 600; color: #1e293b; margin-bottom: 4px; }
     .card-meta { font-size: 12px; color: #94a3b8; font-family: monospace; }
     .card-del-btn {
-      background: transparent; border: none; font-size: 14px; color: #94a3b8;
-      cursor: pointer; padding: 6px 10px; border-radius: 6px; transition: all 0.15s;
+      background: #f1f5f9; border: 1px solid #e2e8f0; font-size: 13px; color: #64748b;
+      cursor: pointer; padding: 8px 14px; border-radius: 8px; transition: all 0.15s;
     }
-    .card-del-btn:hover { background: #fee2e2; color: #ef4444; font-weight: 700; }
+    .card-del-btn:hover { background: #fee2e2; color: #ef4444; border-color: #fca5a5; font-weight: 700; }
 
     /* ---------- 마인드맵 캔버스 화면 ---------- */
     #toolbar {
@@ -160,7 +160,7 @@
 </head>
 <body>
 
-  <!-- 1. 처음 뜨는 홈 화면 (대시보드) -->
+  <!-- 1. 홈 화면 (대시보드) -->
   <div id="home-view">
     <div class="home-header">
       <h1 class="home-title">🧠 Clay's Mindmap Studio</h1>
@@ -208,7 +208,7 @@
 
   <span id="measurer"></span>
 
-  <!-- 마인드맵 내부 목록 모달 -->
+  <!-- 모달 목록 -->
   <div id="modal-overlay">
     <div id="modal">
       <div id="modal-header">
@@ -234,7 +234,6 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    // ---------- 뷰 모드 전환 (홈 vs 마인드맵) ----------
     const homeView = document.getElementById('home-view');
     const homeCardsList = document.getElementById('home-cards-list');
 
@@ -244,11 +243,9 @@
     function checkRoute() {
       const hash = window.location.hash.replace('#', '').trim();
       if (!hash) {
-        // 주소에 방 번호가 없으면 홈 화면 표시
         homeView.style.display = 'flex';
         loadHomeList();
       } else {
-        // 방 번호가 있으면 캔버스 표시 및 동기화 시작
         homeView.style.display = 'none';
         if (currentRoomId !== hash) {
           currentRoomId = hash;
@@ -261,10 +258,12 @@
 
     window.addEventListener('hashchange', checkRoute);
 
-    // 홈 화면 목록 불러오기
+    // 홈 화면 목록 불러오기 & 실시간 삭제 처리
     function loadHomeList() {
       homeCardsList.innerHTML = '<div style="text-align:center; color:#94a3b8; padding:30px;">목록을 불러오는 중...</div>';
-      db.ref('mindmaps').once('value').then(snapshot => {
+      
+      // 실시간 리스너로 연결하여 삭제 시 즉시 갱신
+      db.ref('mindmaps').once('value', (snapshot) => {
         const data = snapshot.val();
         homeCardsList.innerHTML = '';
         if (!data || Object.keys(data).length === 0) {
@@ -279,27 +278,45 @@
           const card = document.createElement('div');
           card.className = 'home-map-card';
           card.innerHTML = `
-            <div>
+            <div style="flex:1;">
               <div class="card-title">${title}</div>
               <div class="card-meta">#${key}</div>
             </div>
-            <button class="card-del-btn" title="삭제">🗑️ 삭제</button>
+            <button class="card-del-btn" type="button">🗑️ 삭제</button>
           `;
 
+          // 카드 클릭 시 이동
           card.addEventListener('click', (e) => {
             if (e.target.closest('.card-del-btn')) return;
             window.location.hash = key;
           });
 
-          card.querySelector('.card-del-btn').addEventListener('click', (e) => {
+          // 삭제 버튼 클릭 시 처리
+          const delBtn = card.querySelector('.card-del-btn');
+          delBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            if (confirm(`'${title}' 마인드맵을 삭제하시겠습니까?`)) {
-              db.ref('mindmaps/' + key).remove().then(() => loadHomeList());
+            e.preventDefault();
+            if (confirm(`'${title}' (#${key}) 마인드맵을 완전히 삭제하시겠습니까?`)) {
+              delBtn.textContent = '삭제 중...';
+              delBtn.disabled = true;
+              
+              db.ref('mindmaps/' + key).remove()
+                .then(() => {
+                  alert('성공적으로 삭제되었습니다.');
+                  loadHomeList();
+                })
+                .catch((err) => {
+                  alert('삭제 실패: ' + err.message + '\nFirebase Realtime Database의 규칙(Rules)을 확인해주세요.');
+                  delBtn.textContent = '🗑️ 삭제';
+                  delBtn.disabled = false;
+                });
             }
           });
 
           homeCardsList.appendChild(card);
         });
+      }, (err) => {
+        homeCardsList.innerHTML = `<div style="text-align:center; color:#ef4444; padding:30px;">불러오기 실패: ${err.message}<br>Firebase 권한(규칙)을 확인하세요.</div>`;
       });
     }
 
@@ -312,12 +329,11 @@
     document.getElementById('btn-new-map').addEventListener('click', createNewMindmap);
     document.getElementById('btn-modal-new').addEventListener('click', createNewMindmap);
 
-    // 홈으로 버튼
     document.getElementById('btn-go-home').addEventListener('click', () => {
       window.location.hash = '';
     });
 
-    // ---------- 마인드맵 코어 설정 ----------
+    // ---------- 마인드맵 코어 ----------
     const H_GAP = 40;
     const V_GAP = 24;
     const NUDGE = 20;
@@ -355,7 +371,6 @@
     const syncStatus = document.getElementById('sync-status');
     const els = {};
 
-    // ---------- 실시간 동기화 ----------
     function pushToCloud() {
       if (isRemoteUpdating || !mapRef) return;
       syncStatus.textContent = '● 저장 중...';
@@ -439,7 +454,6 @@
       pushToCloud();
     }
 
-    // ---------- 레이아웃 ----------
     function computeTreeHeight(n) {
       const ch = childrenOf(n.id);
       const myH = n.h || 38;
@@ -730,7 +744,6 @@
       render();
     }
 
-    // 마우스 & 터치 인터랙션
     let drag = null, pan = null;
     function onNodeMouseDown(e) {
       if (e.button !== 0) return;
@@ -921,7 +934,6 @@
 
     window.addEventListener('resize', () => { centerOnNode(byId(selectedNodeId), false); });
 
-    // 초기 라우팅 실행
     checkRoute();
   </script>
 </body>
