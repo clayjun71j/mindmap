@@ -150,13 +150,12 @@
       font-family: inherit; top: -9999px; left: -9999px;
     }
 
-    /* ---------- 플로팅 컨트롤러 (태블릿 터치 UI) ---------- */
+    /* ---------- 플로팅 컨트롤러 ---------- */
     #node-controls {
       position: absolute; pointer-events: none; z-index: 250;
       display: none; transition: transform 0.1s ease-out;
     }
     
-    /* 상단 플로팅 툴바 */
     .floating-bar {
       position: absolute; bottom: calc(100% + 14px); left: 50%; transform: translateX(-50%);
       background: #ffffff; border: 1px solid #e2e8f0; border-radius: 30px;
@@ -175,7 +174,6 @@
     .float-btn:active { transform: scale(0.92); background: #e0f2fe; }
     .float-sep { width: 1px; height: 16px; background: #e2e8f0; margin: 0 2px; }
 
-    /* 원형 + 버튼 */
     .touch-add-btn {
       position: absolute; width: 26px; height: 26px; border-radius: 50%;
       background: #0284c7; color: #ffffff; border: 2px solid #ffffff;
@@ -187,7 +185,6 @@
     .touch-add-btn:hover { background: #0369a1; transform: scale(1.15); }
     .touch-add-btn:active { transform: scale(0.95); }
 
-    /* 모달 */
     #modal-overlay {
       position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 2000;
       display: none; justify-content: center; align-items: center;
@@ -394,8 +391,8 @@
     document.getElementById('btn-go-home').addEventListener('click', () => { window.location.hash = ''; });
 
     // ---------- 마인드맵 코어 ----------
-    const H_GAP = 55; // 부모-자식 간 가로 여백 충분히 확보
-    const V_GAP = 22; // 세로 노드 간격
+    const H_GAP = 55;
+    const V_GAP = 22;
     const NUDGE = 20;
 
     const PALETTE = [
@@ -418,6 +415,7 @@
     let isEditing = false;
     let editingId = null;
     let editSnapshot = null;
+    let isNewNodeEditing = false; // 새로 추가되어 입력 대기 중인 노드 플래그
 
     let zoom = 1.0, panX = 0, panY = 0;
     let undoStack = [], redoStack = [];
@@ -570,14 +568,14 @@
 
     function formatNodeHTML(str) {
       const parsed = parseNodeContent(str);
-      const safeLabel = parsed.label.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const safeLabel = (parsed.label || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       if (parsed.url) {
         return `<span class="node-label">${safeLabel}</span><a class="link-badge" href="${parsed.url}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();" title="${parsed.url}">🔗 링크</a>`;
       }
       return `<span class="node-label">${safeLabel}</span>`;
     }
 
-    // ---------- 정밀 재귀 레이아웃 엔진 (가지 겹침 원천 방지) ----------
+    // ---------- 레이아웃 엔진 ----------
     function computeTreeHeight(n) {
       const ch = childrenOf(n.id);
       const myH = n.h || 38;
@@ -648,7 +646,6 @@
         }
       });
 
-      // 오른쪽 서브트리 일괄 정렬
       if (rightBranches.length > 0) {
         let rightTotalH = 0;
         rightBranches.forEach(c => { rightTotalH += c._sh; });
@@ -663,7 +660,6 @@
         });
       }
 
-      // 왼쪽 서브트리 일괄 정렬
       if (leftBranches.length > 0) {
         let leftTotalH = 0;
         leftBranches.forEach(c => { leftTotalH += c._sh; });
@@ -809,13 +805,11 @@
         styleNodeEl(el, n);
       });
 
-      // 1차 너비/높이 동기화
       nodes.forEach(n => {
-        n.w = Math.max(els[n.id].offsetWidth, 55);
+        n.w = Math.max(els[n.id].offsetWidth, 60);
         n.h = Math.max(els[n.id].offsetHeight, 36);
       });
 
-      // 2차 레이아웃 계산 및 전파
       layoutAllTrees();
 
       nodes.forEach(n => {
@@ -910,10 +904,13 @@
       return measurer.offsetWidth;
     }
 
-    function startEdit() {
+    function startEdit(isNew = false) {
       const n = byId(selectedNodeId);
       if (!n || isEditing) return;
-      isEditing = true; editingId = n.id; editSnapshot = snapshot();
+      isEditing = true; 
+      editingId = n.id; 
+      editSnapshot = snapshot();
+      isNewNodeEditing = isNew;
       nodeControls.style.display = 'none';
       centerOnNode(n, true);
 
@@ -922,7 +919,8 @@
       const input = document.createElement('input');
       input.className = 'node-input';
       input.value = n.text;
-      const fit = () => { input.style.width = Math.max(55, measureText(input.value, n.isRoot || n.bold) + 16) + 'px'; render(); };
+      input.placeholder = '주제 입력...';
+      const fit = () => { input.style.width = Math.max(60, measureText(input.value || input.placeholder, n.isRoot || n.bold) + 20) + 'px'; render(); };
       input.addEventListener('input', fit);
       input.addEventListener('mousedown', e => e.stopPropagation());
       input.addEventListener('touchstart', e => e.stopPropagation(), { passive: true });
@@ -935,7 +933,7 @@
       });
       input.addEventListener('blur', () => { if (isEditing && editingId === n.id) finishEdit(true, false); });
       el.appendChild(input);
-      input.style.width = Math.max(55, measureText(n.text, n.isRoot || n.bold) + 16) + 'px';
+      input.style.width = Math.max(60, measureText(n.text || input.placeholder, n.isRoot || n.bold) + 20) + 'px';
       render();
       input.focus(); 
       input.select();
@@ -948,14 +946,33 @@
       const input = el ? el.querySelector('input') : null;
       isEditing = false;
       const snap = editSnapshot;
-      editingId = null; editSnapshot = null;
-      if (n && input && commit) {
-        const v = input.value.trim();
-        if (v && v !== n.text) { 
-          n.text = v; 
-          saveState(snap);
-        }
+      const wasNew = isNewNodeEditing;
+      const targetId = editingId;
+      editingId = null; 
+      editSnapshot = null;
+      isNewNodeEditing = false;
+
+      if (!n) return;
+
+      const v = input ? input.value.trim() : '';
+
+      // 신규 노드인데 아무것도 입력하지 않았거나 취소된 경우 자동 삭제
+      if (wasNew && !v) {
+        const parentId = n.parentId;
+        nodes = nodes.filter(item => item.id !== targetId);
+        selectedNodeId = parentId;
+        render();
+        return;
       }
+
+      if (commit && v && v !== n.text) {
+        n.text = v;
+        saveState(snap);
+      } else if (!v && !n.isRoot) {
+        // 기존 노드라도 내용을 전부 지웠을 경우 원복
+        n.text = n.text || '주제';
+      }
+
       render();
       if (center && n) centerOnNode(n, true);
     }
@@ -963,13 +980,18 @@
     function addChild() {
       const p = byId(selectedNodeId) || rootNode();
       if (!p) return;
-      const n = { id: nextId++, text: '하위 주제', parentId: p.id, isRoot: false,
-                  colorIndex: p.isRoot ? freeColorIndex() : null, dx: 0, dy: 0, side: null, bold: false };
+      const n = { 
+        id: nextId++, 
+        text: '', // 공란으로 생성
+        parentId: p.id, 
+        isRoot: false,
+        colorIndex: p.isRoot ? freeColorIndex() : null, 
+        dx: 0, dy: 0, side: null, bold: false 
+      };
       nodes.push(n);
-      saveState();
       render();
       selectNode(n.id, false);
-      startEdit();
+      startEdit(true); // 새 노드 상태로 진입
     }
 
     function addSibling() {
@@ -977,14 +999,19 @@
       if (!cur) return;
       if (cur.isRoot) { addChild(); return; }
       const p = byId(cur.parentId);
-      const n = { id: nextId++, text: '동일 주제', parentId: cur.parentId, isRoot: false,
-                  colorIndex: p && p.isRoot ? freeColorIndex() : null, dx: 0, dy: 0, side: null, bold: false };
+      const n = { 
+        id: nextId++, 
+        text: '', // 공란으로 생성
+        parentId: cur.parentId, 
+        isRoot: false,
+        colorIndex: p && p.isRoot ? freeColorIndex() : null, 
+        dx: 0, dy: 0, side: null, bold: false 
+      };
       const idx = nodes.indexOf(cur);
       nodes.splice(idx + 1, 0, n);
-      saveState();
       render();
       selectNode(n.id, false);
-      startEdit();
+      startEdit(true); // 새 노드 상태로 진입
     }
 
     function deleteNode() {
@@ -1126,7 +1153,7 @@
       if (target) selectNode(target.id, false);
     }
 
-    // ---------- 드래그 앤 드롭 ----------
+    // ---------- 드래그 앤 드롭 & 공란 클릭 해제 ----------
     let drag = null, pan = null;
 
     function onNodeMouseDown(e) {
@@ -1338,7 +1365,7 @@
       if (url !== null) {
         const trimmed = url.trim();
         if (trimmed && trimmed !== 'https://') {
-          cur.text = parsed.label + ' ' + trimmed;
+          cur.text = (parsed.label ? parsed.label + ' ' : '') + trimmed;
         } else {
           cur.text = parsed.label;
         }
