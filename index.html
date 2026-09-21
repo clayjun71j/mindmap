@@ -113,7 +113,8 @@
       box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.45), 0 8px 20px rgba(0,0,0,0.1) !important;
       border-color: #0284c7 !important; transform: scale(1.05);
     }
-    .node.dragging { opacity: 0.75; pointer-events: none !important; z-index: 100 !important; }
+    .node.dragging { opacity: 0.85; z-index: 100 !important; }
+    .node.subtree-dragging { opacity: 0.85; }
     .node.drag-over { 
       border-style: dashed !important; border-color: #0284c7 !important; 
       box-shadow: 0 0 0 4px rgba(2,132,199,0.3) !important; transform: scale(1.04);
@@ -185,7 +186,8 @@
     <span class="item" data-action="redo"><span class="kbd">Ctrl+Y</span>복구</span>
     <span class="sep"></span>
     <span class="item" data-action="root"><span class="kbd">F6</span>중심으로</span>
-    <span class="item" data-action="resetAll">전체 정렬</span>
+    <span class="item" data-action="resetSel"><span class="kbd">A</span>가지 정렬</span>
+    <span class="item" data-action="resetAll"><span class="kbd">Shift+A</span>전체 정렬</span>
     <span class="sep"></span>
     <span class="item" id="btn-list" style="color:#4f46e5; font-weight:bold;">📂 목록</span>
     <span class="item" id="btn-new-map" style="color:#059669; font-weight:bold;">➕ 새 맵</span>
@@ -412,6 +414,19 @@
       }
       return false;
     }
+    function getAllDescendantIds(rootId) {
+      const result = [];
+      function traverse(id) {
+        const ch = childrenOf(id);
+        ch.forEach(c => {
+          result.push(c.id);
+          traverse(c.id);
+        });
+      }
+      traverse(rootId);
+      return result;
+    }
+
     function depthOf(n) {
       let d = 0, cur = n;
       while (cur && cur.parentId !== null) { d++; cur = byId(cur.parentId); }
@@ -444,7 +459,7 @@
       pushToCloud();
     }
 
-    // ---------- 좌우 양방향 레이아웃 엔진 (우3, 좌3 분배) ----------
+    // ---------- 좌우 양방향 레이아웃 엔진 ----------
     function computeTreeHeight(n) {
       const ch = childrenOf(n.id);
       const myH = n.h || 38;
@@ -456,7 +471,6 @@
       return n._sh;
     }
 
-    // 하위 서브트리 배치 (dir: 'right' | 'left')
     function layoutSubtreeBranch(n, x, topY, dir) {
       n._dir = dir;
       n.ax = x;
@@ -475,7 +489,6 @@
       const nextX = dir === 'right' ? (n.ax + n.w + H_GAP) : (n.ax - H_GAP);
 
       for (let i = 0; i < ch.length; i++) {
-        // 왼쪽 방향일 경우 자식 노드의 폭만큼 왼쪽으로 밀어 배치
         const targetX = dir === 'right' ? nextX : (nextX - (ch[i].w || 60));
         layoutSubtreeBranch(ch[i], targetX, curTop, dir);
         curTop += ch[i]._sh + V_GAP;
@@ -495,7 +508,6 @@
       const rootChildren = childrenOf(r.id);
       if (!rootChildren.length) return;
 
-      // 3개씩 오른쪽, 왼쪽 분배: 0,1,2: 우 / 3,4,5: 좌 / 6,7,8: 우 ...
       const rightBranches = [];
       const leftBranches = [];
 
@@ -509,7 +521,6 @@
         }
       });
 
-      // 1. 오른쪽 가지 배치
       if (rightBranches.length > 0) {
         let rightTotalH = 0;
         rightBranches.forEach(c => { rightTotalH += c._sh; });
@@ -524,7 +535,6 @@
         });
       }
 
-      // 2. 왼쪽 가지 배치
       if (leftBranches.length > 0) {
         let leftTotalH = 0;
         leftBranches.forEach(c => { leftTotalH += c._sh; });
@@ -610,7 +620,6 @@
       drawLines();
     }
 
-    // 양방향 베지어 곡선 연결
     function drawLines() {
       let s = '';
       nodes.forEach(n => {
@@ -622,14 +631,12 @@
         const c = colorOf(n);
 
         if (n._dir === 'left') {
-          // 왼쪽 가지: 부모의 왼쪽 끝 -> 자식의 오른쪽 끝
           x1 = p.isRoot ? p.x : p.x;
           y1 = p.y + p.h / 2;
           x2 = n.x + n.w;
           y2 = n.y + n.h / 2;
           mx = (x1 + x2) / 2;
         } else {
-          // 오른쪽 가지: 부모의 오른쪽 끝 -> 자식의 왼쪽 끝
           x1 = p.x + p.w;
           y1 = p.y + p.h / 2;
           x2 = n.x;
@@ -647,7 +654,6 @@
       world.style.transform = 'translate(' + panX + 'px,' + panY + 'px) scale(' + zoom + ')';
     }
 
-    // 화면 중앙 정렬
     function centerOnNode(n, animate) {
       if (!n) return;
       if (animate === false) {
@@ -659,7 +665,6 @@
       const vw = viewport.clientWidth || window.innerWidth;
       const vh = viewport.clientHeight || window.innerHeight;
       
-      // 양방향으로 뻗으므로 중심 주제는 정확한 화면 정가운데(50%)에 배치
       panX = (vw / 2) - (n.x + n.w / 2) * zoom;
       panY = (vh / 2) - (n.y + n.h / 2) * zoom;
       updateTransform();
@@ -785,8 +790,17 @@
     function reparent(node, newParent, pushUndo) {
       if (!node || !newParent || node.isRoot) return false;
       if (node.id === newParent.id || isDescendant(newParent, node.id)) return false;
+      
+      // 편입 시 해당 노드 및 그 하위 자손들의 수동 오프셋 초기화
+      const subtreeIds = [node.id, ...getAllDescendantIds(node.id)];
+      nodes.forEach(n => {
+        if (subtreeIds.includes(n.id)) {
+          n.dx = 0;
+          n.dy = 0;
+        }
+      });
+
       node.parentId = newParent.id;
-      node.dx = 0; node.dy = 0;
       if (newParent.isRoot) node.colorIndex = freeColorIndex(node.id);
       nodes.splice(nodes.indexOf(node), 1);
       nodes.push(node);
@@ -794,16 +808,28 @@
       return true;
     }
 
-    function nudge(dx, dy) {
-      const cur = byId(selectedNodeId);
-      if (!cur || cur.isRoot) return;
-      cur.dx = (cur.dx || 0) + dx; cur.dy = (cur.dy || 0) + dy;
+    // 부모 노드 이동 시 모든 하위 노드까지 함께 이동 (오프셋 동시 적용)
+    function nudgeSubtree(rootNodeId, dx, dy) {
+      const targetIds = [rootNodeId, ...getAllDescendantIds(rootNodeId)];
+      nodes.forEach(n => {
+        if (targetIds.includes(n.id)) {
+          n.dx = (n.dx || 0) + dx;
+          n.dy = (n.dy || 0) + dy;
+        }
+      });
       saveState();
       render();
     }
 
-    function resetOffsets() {
-      nodes.forEach(n => { n.dx = 0; n.dy = 0; });
+    function resetOffsets(targetRootId) {
+      if (targetRootId) {
+        const targetIds = [targetRootId, ...getAllDescendantIds(targetRootId)];
+        nodes.forEach(n => {
+          if (targetIds.includes(n.id)) { n.dx = 0; n.dy = 0; }
+        });
+      } else {
+        nodes.forEach(n => { n.dx = 0; n.dy = 0; });
+      }
       saveState();
       render();
       centerOnNode(byId(selectedNodeId), true);
@@ -831,24 +857,18 @@
       render();
     }
 
-    // ---------- 방향키 탐색 (좌우 가지 방향 지능형 지원) ----------
+    // 방향키 지능형 탐색
     function navigate(dir) {
       const cur = byId(selectedNodeId);
       if (!cur) return;
       let target = null;
 
       if (cur.isRoot) {
-        // 중심 주제에서 이동할 때
         const ch = childrenOf(cur.id);
-        if (dir === 'ArrowRight') {
-          target = ch.find(c => c._dir === 'right');
-        } else if (dir === 'ArrowLeft') {
-          target = ch.find(c => c._dir === 'left');
-        }
+        if (dir === 'ArrowRight') target = ch.find(c => c._dir === 'right');
+        else if (dir === 'ArrowLeft') target = ch.find(c => c._dir === 'left');
       } else {
         const isLeft = (cur._dir === 'left');
-        
-        // 왼쪽 가지일 때는 화살표의 좌우 기능이 반전됨 (←가 하위로 확장, →가 부모로 수렴)
         if (dir === 'ArrowLeft') {
           if (isLeft) {
             const ch = childrenOf(cur.id);
@@ -864,7 +884,6 @@
             if (ch.length) target = ch[Math.floor((ch.length - 1) / 2)];
           }
         } else {
-          // 상하 이동
           const up = (dir === 'ArrowUp');
           if (cur.parentId !== null) {
             const sib = childrenOf(cur.parentId).filter(c => c._dir === cur._dir);
@@ -891,7 +910,9 @@
       if (target) selectNode(target.id, false);
     }
 
+    // ---------- 드래그 앤 드롭 (하위 노드 동시 드래그 로직) ----------
     let drag = null, pan = null;
+
     function onNodeMouseDown(e) {
       if (e.button !== 0) return;
       e.stopPropagation();
@@ -899,8 +920,30 @@
       if (isEditing && editingId !== id) finishEdit(true, false);
       if (isEditing) return;
       selectNode(id, false);
+      
       const n = byId(id);
-      drag = { id: id, sx: e.clientX, sy: e.clientY, odx: n.dx || 0, ody: n.dy || 0, moved: false, snap: snapshot(), over: null };
+      if (n.isRoot) return; // 중심 주제는 드래그 이동 불가
+
+      const descendantIds = getAllDescendantIds(id);
+      const subtreeIds = [id, ...descendantIds];
+      
+      // 초기 오프셋 맵 저장
+      const originOffsets = {};
+      subtreeIds.forEach(subId => {
+        const subNode = byId(subId);
+        originOffsets[subId] = { dx: subNode.dx || 0, dy: subNode.dy || 0 };
+      });
+
+      drag = { 
+        id: id, 
+        subtreeIds: subtreeIds,
+        originOffsets: originOffsets,
+        sx: e.clientX, 
+        sy: e.clientY, 
+        moved: false, 
+        snap: snapshot(), 
+        over: null 
+      };
       e.preventDefault();
     }
 
@@ -921,25 +964,39 @@
         return;
       }
       if (drag) {
-        const n = byId(drag.id);
-        if (!n) { drag = null; return; }
         const mx = e.clientX - drag.sx, my = e.clientY - drag.sy;
         if (!drag.moved) {
           if (Math.abs(mx) < 5 && Math.abs(my) < 5) return;
-          if (n.isRoot) { drag = null; return; }
           drag.moved = true;
-          els[n.id].classList.add('dragging');
+          drag.subtreeIds.forEach(subId => {
+            if (els[subId]) {
+              if (subId === drag.id) els[subId].classList.add('dragging');
+              else els[subId].classList.add('subtree-dragging');
+            }
+          });
         }
-        n.dx = drag.odx + mx / zoom;
-        n.dy = drag.ody + my / zoom;
+
+        const deltaX = mx / zoom;
+        const deltaY = my / zoom;
+
+        // 부모와 모든 하위 자식 노드를 함께 동일한 변위로 이동
+        drag.subtreeIds.forEach(subId => {
+          const subNode = byId(subId);
+          if (subNode && drag.originOffsets[subId]) {
+            subNode.dx = drag.originOffsets[subId].dx + deltaX;
+            subNode.dy = drag.originOffsets[subId].dy + deltaY;
+          }
+        });
         render();
 
+        // 편입 대상 노드 판별
         const under = document.elementFromPoint(e.clientX, e.clientY);
         const overEl = under && under.closest ? under.closest('.node') : null;
         let overId = overEl ? +overEl.dataset.id : null;
-        if (overId !== null) {
-          const t = byId(overId);
-          if (!t || t.id === n.id || t.id === n.parentId || isDescendant(t, n.id)) overId = null;
+
+        // 자신이나 자신의 하위 노드에는 편입 불가
+        if (overId !== null && drag.subtreeIds.includes(overId)) {
+          overId = null;
         }
 
         if (drag.over !== overId) {
@@ -955,14 +1012,26 @@
       if (drag) {
         const n = byId(drag.id);
         if (n && drag.moved) {
-          els[n.id].classList.remove('dragging');
-          if (drag.over !== null && els[drag.over]) els[drag.over].classList.remove('drag-over');
+          drag.subtreeIds.forEach(subId => {
+            if (els[subId]) {
+              els[subId].classList.remove('dragging');
+              els[subId].classList.remove('subtree-dragging');
+            }
+          });
+
+          if (drag.over !== null && els[drag.over]) {
+            els[drag.over].classList.remove('drag-over');
+          }
+
           if (drag.over !== null) {
+            // 다른 노드 위로 드롭 시 -> 하위 편입
             const targetParent = byId(drag.over);
-            n.dx = 0; n.dy = 0;
-            if (reparent(n, targetParent, false)) saveState(drag.snap);
+            if (reparent(n, targetParent, false)) {
+              saveState(drag.snap);
+            }
             render();
           } else {
+            // 빈 공간으로 드롭 시 -> 하위 노드들과 함께 이동한 위치 영구 저장
             saveState(drag.snap);
             render();
           }
@@ -1015,7 +1084,7 @@
       if (e.touches.length === 0) touchPan = null;
     });
 
-    // 키보드 이벤트
+    // 키보드 단축키
     window.addEventListener('keydown', (e) => {
       if (e.key === 'F6') { e.preventDefault(); goRoot(); return; }
       if (isEditing) return;
@@ -1032,16 +1101,28 @@
       if (k.startsWith('Arrow')) {
         e.preventDefault();
         if (e.shiftKey) {
-          if (k === 'ArrowLeft') nudge(-NUDGE, 0);
-          else if (k === 'ArrowRight') nudge(NUDGE, 0);
-          else if (k === 'ArrowUp') nudge(0, -NUDGE);
-          else nudge(0, NUDGE);
+          // Shift + 방향키 시 선택된 주제와 그 하위 노드 전체 동시 이동
+          const cur = byId(selectedNodeId);
+          if (cur && !cur.isRoot) {
+            if (k === 'ArrowLeft') nudgeSubtree(cur.id, -NUDGE, 0);
+            else if (k === 'ArrowRight') nudgeSubtree(cur.id, NUDGE, 0);
+            else if (k === 'ArrowUp') nudgeSubtree(cur.id, 0, -NUDGE);
+            else nudgeSubtree(cur.id, 0, NUDGE);
+          }
         } else {
           navigate(k);
         }
         return;
       }
-      if (k === 'a' || k === 'A') { e.preventDefault(); resetOffsets(); return; }
+      if (k === 'a' || k === 'A') { 
+        e.preventDefault(); 
+        if (e.shiftKey) resetOffsets(); // 전체 정렬
+        else {
+          const cur = byId(selectedNodeId);
+          if (cur) resetOffsets(cur.id); // 선택한 가지 정렬
+        }
+        return; 
+      }
     }, true);
 
     // 툴바 액션
@@ -1057,6 +1138,10 @@
       else if (a === 'undo') undo();
       else if (a === 'redo') redo();
       else if (a === 'root') goRoot();
+      else if (a === 'resetSel') {
+        const cur = byId(selectedNodeId);
+        if (cur) resetOffsets(cur.id);
+      }
       else if (a === 'resetAll') resetOffsets();
     });
 
