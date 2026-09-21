@@ -108,6 +108,8 @@
       user-select: none;
     }
     
+    .node.bold-text { font-weight: 700 !important; }
+    
     .node-label {
       pointer-events: none;
       display: inline-block;
@@ -148,6 +150,44 @@
       font-family: inherit; top: -9999px; left: -9999px;
     }
 
+    /* ---------- 플로팅 컨트롤러 (태블릿 터치 UI) ---------- */
+    #node-controls {
+      position: absolute; pointer-events: none; z-index: 250;
+      display: none; transition: transform 0.1s ease-out;
+    }
+    
+    /* 상단 플로팅 툴바 */
+    .floating-bar {
+      position: absolute; bottom: calc(100% + 14px); left: 50%; transform: translateX(-50%);
+      background: #ffffff; border: 1px solid #e2e8f0; border-radius: 30px;
+      padding: 4px 8px; box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+      display: flex; align-items: center; gap: 4px; pointer-events: auto;
+      white-space: nowrap; user-select: none;
+    }
+    .float-btn {
+      background: transparent; border: none; outline: none;
+      width: 32px; height: 32px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 15px; cursor: pointer; color: #475569;
+      transition: background 0.15s, transform 0.1s;
+    }
+    .float-btn:hover { background: #f1f5f9; color: #0284c7; }
+    .float-btn:active { transform: scale(0.92); background: #e0f2fe; }
+    .float-sep { width: 1px; height: 16px; background: #e2e8f0; margin: 0 2px; }
+
+    /* 원형 + 버튼 */
+    .touch-add-btn {
+      position: absolute; width: 26px; height: 26px; border-radius: 50%;
+      background: #0284c7; color: #ffffff; border: 2px solid #ffffff;
+      box-shadow: 0 2px 8px rgba(2,132,199,0.35);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; font-weight: bold; cursor: pointer; pointer-events: auto;
+      transition: transform 0.15s, background-color 0.15s; line-height: 1;
+    }
+    .touch-add-btn:hover { background: #0369a1; transform: scale(1.15); }
+    .touch-add-btn:active { transform: scale(0.95); }
+
+    /* 모달 */
     #modal-overlay {
       position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 2000;
       display: none; justify-content: center; align-items: center;
@@ -219,6 +259,23 @@
     <div id="world">
       <svg id="svg-lines"></svg>
       <div id="canvas"></div>
+
+      <!-- 플로팅 터치 컨트롤러 -->
+      <div id="node-controls">
+        <!-- 상단 툴바 -->
+        <div class="floating-bar">
+          <button class="float-btn" id="fbtn-edit" title="텍스트 수정">✏️</button>
+          <button class="float-btn" id="fbtn-link" title="하이퍼링크 연결">🔗</button>
+          <button class="float-btn" id="fbtn-style" title="굵게/기본 글자">🎨</button>
+          <button class="float-btn" id="fbtn-flip" title="좌/우 방향 전환">↔️</button>
+          <div class="float-sep"></div>
+          <button class="float-btn" id="fbtn-delete" title="노드 삭제" style="color:#ef4444;">🗑️</button>
+        </div>
+        <!-- 하위 노드 추가 (+) -->
+        <div class="touch-add-btn" id="btn-touch-child" title="하위 가지 추가">+</div>
+        <!-- 동일 노드 추가 (+) -->
+        <div class="touch-add-btn" id="btn-touch-sibling" title="동일 레벨 가지 추가">+</div>
+      </div>
     </div>
   </div>
 
@@ -358,7 +415,7 @@
     ];
     const ROOT_COLOR = { bd: '#38bdf8', bg: '#e0f2fe', sel: '#bae6fd', ring: 'rgba(56,189,248,0.45)' };
 
-    let nodes = [{ id: 1, text: '중심 주제', parentId: null, isRoot: true, colorIndex: null, dx: 0, dy: 0, side: null }];
+    let nodes = [{ id: 1, text: '중심 주제', parentId: null, isRoot: true, colorIndex: null, dx: 0, dy: 0, side: null, bold: false }];
     let nextId = 2;
     let selectedNodeId = 1;
     let isEditing = false;
@@ -375,6 +432,9 @@
     const svg = document.getElementById('svg-lines');
     const measurer = document.getElementById('measurer');
     const syncStatus = document.getElementById('sync-status');
+    const nodeControls = document.getElementById('node-controls');
+    const btnTouchChild = document.getElementById('btn-touch-child');
+    const btnTouchSibling = document.getElementById('btn-touch-sibling');
     const els = {};
 
     function pushToCloud() {
@@ -418,7 +478,7 @@
           isRemoteUpdating = false;
         } else {
           isExistingMap = false;
-          nodes = [{ id: 1, text: '중심 주제', parentId: null, isRoot: true, colorIndex: null, dx: 0, dy: 0, side: null }];
+          nodes = [{ id: 1, text: '중심 주제', parentId: null, isRoot: true, colorIndex: null, dx: 0, dy: 0, side: null, bold: false }];
           nextId = 2;
           selectedNodeId = 1;
           render();
@@ -488,7 +548,7 @@
       return JSON.stringify(nodes.map(n => ({
         id: n.id, text: n.text, parentId: n.parentId, isRoot: !!n.isRoot,
         colorIndex: n.colorIndex == null ? null : n.colorIndex, dx: n.dx || 0, dy: n.dy || 0,
-        side: n.side || null
+        side: n.side || null, bold: !!n.bold
       })));
     }
     function saveState(snap) {
@@ -520,7 +580,7 @@
       return `<span class="node-label">${safeLabel}</span>`;
     }
 
-    // ---------- 좌우 양방향 레이아웃 엔진 (자동 번갈아 분배 + 수동 지정 지원) ----------
+    // ---------- 레이아웃 엔진 ----------
     function computeTreeHeight(n) {
       const ch = childrenOf(n.id);
       const myH = n.h || 38;
@@ -572,7 +632,6 @@
       const rightBranches = [];
       const leftBranches = [];
 
-      // 1개씩 번갈아 가며 분배 (우1 ↔ 좌1), 수동 side가 있으면 우선 적용
       rootChildren.forEach((child, idx) => {
         computeTreeHeight(child);
         const effectiveSide = child.side || (idx % 2 === 0 ? 'right' : 'left');
@@ -613,7 +672,6 @@
       }
     }
 
-    // 좌/우 방향 수동 토글 함수
     function flipDirection(targetId) {
       const cur = byId(targetId || selectedNodeId);
       if (!cur || cur.isRoot) return;
@@ -622,7 +680,7 @@
       
       const currentDir = bRoot._dir || 'right';
       bRoot.side = (currentDir === 'right') ? 'left' : 'right';
-      bRoot.dx = 0; bRoot.dy = 0; // 방향 변경 시 오프셋 초기화
+      bRoot.dx = 0; bRoot.dy = 0;
       saveState();
       render();
     }
@@ -685,6 +743,7 @@
       const selected = (n.id === selectedNodeId);
       el.classList.toggle('root', !!n.isRoot);
       el.classList.toggle('selected', selected);
+      el.classList.toggle('bold-text', !!n.bold);
       
       if (n.isRoot) {
         el.style.borderColor = selected ? '#0284c7' : c.bd;
@@ -697,6 +756,41 @@
       
       if (!(isEditing && editingId === n.id)) {
         el.innerHTML = formatNodeHTML(n.text);
+      }
+    }
+
+    // 플로팅 컨트롤러 위치 업데이트
+    function updateControlsPosition() {
+      const n = byId(selectedNodeId);
+      if (!n || isEditing) {
+        nodeControls.style.display = 'none';
+        return;
+      }
+
+      nodeControls.style.display = 'block';
+      nodeControls.style.left = n.x + 'px';
+      nodeControls.style.top = n.y + 'px';
+      nodeControls.style.width = n.w + 'px';
+      nodeControls.style.height = n.h + 'px';
+
+      // 1. 하위 노드 추가 (+) 위치: 오른쪽 가지는 우측, 왼쪽 가지는 좌측
+      if (n._dir === 'left') {
+        btnTouchChild.style.left = '-13px';
+        btnTouchChild.style.right = 'auto';
+      } else {
+        btnTouchChild.style.left = 'auto';
+        btnTouchChild.style.right = '-13px';
+      }
+      btnTouchChild.style.top = (n.h / 2 - 13) + 'px';
+
+      // 2. 동일 레벨 추가 (+) 위치: 하단 중앙 (중심 주제는 동일 레벨 비활성화)
+      if (n.isRoot) {
+        btnTouchSibling.style.display = 'none';
+      } else {
+        btnTouchSibling.style.display = 'flex';
+        btnTouchSibling.style.left = (n.w / 2 - 13) + 'px';
+        btnTouchSibling.style.bottom = '-13px';
+        btnTouchSibling.style.top = 'auto';
       }
     }
 
@@ -724,6 +818,7 @@
         }
       });
       drawLines();
+      updateControlsPosition();
     }
 
     function drawLines() {
@@ -784,6 +879,7 @@
     function selectNode(id, center) {
       selectedNodeId = id;
       nodes.forEach(n => { if (els[n.id]) styleNodeEl(els[n.id], n); });
+      updateControlsPosition();
       if (center) centerOnNode(byId(id), true);
     }
 
@@ -805,6 +901,7 @@
       const n = byId(selectedNodeId);
       if (!n || isEditing) return;
       isEditing = true; editingId = n.id; editSnapshot = snapshot();
+      nodeControls.style.display = 'none'; // 편집 중엔 플로팅 컨트롤러 숨김
       centerOnNode(n, true);
 
       const el = els[n.id];
@@ -812,7 +909,7 @@
       const input = document.createElement('input');
       input.className = 'node-input';
       input.value = n.text;
-      const fit = () => { input.style.width = Math.max(55, measureText(input.value, n.isRoot) + 16) + 'px'; render(); };
+      const fit = () => { input.style.width = Math.max(55, measureText(input.value, n.isRoot || n.bold) + 16) + 'px'; render(); };
       input.addEventListener('input', fit);
       input.addEventListener('mousedown', e => e.stopPropagation());
       input.addEventListener('touchstart', e => e.stopPropagation(), { passive: true });
@@ -825,7 +922,7 @@
       });
       input.addEventListener('blur', () => { if (isEditing && editingId === n.id) finishEdit(true, false); });
       el.appendChild(input);
-      input.style.width = Math.max(55, measureText(n.text, n.isRoot) + 16) + 'px';
+      input.style.width = Math.max(55, measureText(n.text, n.isRoot || n.bold) + 16) + 'px';
       render();
       input.focus(); 
       input.select();
@@ -854,7 +951,7 @@
       const p = byId(selectedNodeId);
       if (!p) return;
       const n = { id: nextId++, text: '하위 주제', parentId: p.id, isRoot: false,
-                  colorIndex: p.isRoot ? freeColorIndex() : null, dx: 0, dy: 0, side: null };
+                  colorIndex: p.isRoot ? freeColorIndex() : null, dx: 0, dy: 0, side: null, bold: false };
       nodes.push(n);
       saveState();
       render();
@@ -868,7 +965,7 @@
       if (cur.isRoot) { addChild(); return; }
       const p = byId(cur.parentId);
       const n = { id: nextId++, text: '동일 주제', parentId: cur.parentId, isRoot: false,
-                  colorIndex: p && p.isRoot ? freeColorIndex() : null, dx: 0, dy: 0, side: null };
+                  colorIndex: p && p.isRoot ? freeColorIndex() : null, dx: 0, dy: 0, side: null, bold: false };
       const idx = nodes.indexOf(cur);
       nodes.splice(idx + 1, 0, n);
       saveState();
@@ -908,7 +1005,7 @@
       node.parentId = newParent.id;
       if (newParent.isRoot) {
         node.colorIndex = freeColorIndex(node.id);
-        node.side = null; // 중심 주제 직속으로 오면 기본 균형 적용
+        node.side = null;
       }
       nodes.splice(nodes.indexOf(node), 1);
       nodes.push(node);
@@ -1016,12 +1113,12 @@
       if (target) selectNode(target.id, false);
     }
 
-    // ---------- 드래그 앤 드롭 (방향 전환 감지 포함) ----------
+    // ---------- 드래그 앤 드롭 ----------
     let drag = null, pan = null;
 
     function onNodeMouseDown(e) {
       if (e.button !== 0) return;
-      if (e.target.closest && e.target.closest('.link-badge')) return;
+      if (e.target.closest && (e.target.closest('.link-badge') || e.target.closest('#node-controls'))) return;
 
       e.stopPropagation();
       const id = +this.dataset.id;
@@ -1055,7 +1152,7 @@
     }
 
     viewport.addEventListener('mousedown', (e) => {
-      if (e.button !== 0 || (e.target.closest && e.target.closest('.node'))) return;
+      if (e.button !== 0 || (e.target.closest && (e.target.closest('.node') || e.target.closest('#node-controls')))) return;
       if (isEditing) finishEdit(true, false);
       pan = { sx: e.clientX, sy: e.clientY, px: panX, py: panY };
       viewport.classList.add('panning');
@@ -1134,7 +1231,6 @@
             }
             render();
           } else {
-            // 1단계 가지일 경우 중심 주제 기준 좌/우 경계를 넘겨서 놓았는지 감지
             const r = rootNode();
             const bRoot = getBranchRoot(n);
             if (bRoot && bRoot.id === n.id && r) {
@@ -1166,9 +1262,10 @@
       }
     }, { passive: false });
 
-    // 모바일 터치
+    // 모바일 터치 제스처
     let touchPan = null, initialPinchDist = null, initialZoom = 1.0;
     viewport.addEventListener('touchstart', (e) => {
+      if (e.target.closest && (e.target.closest('.node') || e.target.closest('#node-controls'))) return;
       if (e.touches.length === 1) {
         const t = e.touches[0];
         touchPan = { sx: t.clientX, sy: t.clientY, px: panX, py: panY };
@@ -1196,6 +1293,53 @@
     viewport.addEventListener('touchend', (e) => {
       if (e.touches.length < 2) initialPinchDist = null;
       if (e.touches.length === 0) touchPan = null;
+    });
+
+    // 플로팅 터치 버튼 리스너 바인딩
+    btnTouchChild.addEventListener('click', (e) => {
+      e.stopPropagation(); addChild();
+    });
+    btnTouchSibling.addEventListener('click', (e) => {
+      e.stopPropagation(); addSibling();
+    });
+
+    document.getElementById('fbtn-edit').addEventListener('click', (e) => {
+      e.stopPropagation(); startEdit();
+    });
+
+    document.getElementById('fbtn-link').addEventListener('click', (e) => {
+      e.stopPropagation();
+      const cur = byId(selectedNodeId);
+      if (!cur) return;
+      const parsed = parseNodeContent(cur.text);
+      const url = prompt('연결할 웹사이트 링크(URL)를 입력하세요:', parsed.url || 'https://');
+      if (url !== null) {
+        const trimmed = url.trim();
+        if (trimmed && trimmed !== 'https://') {
+          cur.text = parsed.label + ' ' + trimmed;
+        } else {
+          cur.text = parsed.label; // 링크 제거
+        }
+        saveState();
+        render();
+      }
+    });
+
+    document.getElementById('fbtn-style').addEventListener('click', (e) => {
+      e.stopPropagation();
+      const cur = byId(selectedNodeId);
+      if (!cur) return;
+      cur.bold = !cur.bold;
+      saveState();
+      render();
+    });
+
+    document.getElementById('fbtn-flip').addEventListener('click', (e) => {
+      e.stopPropagation(); flipDirection();
+    });
+
+    document.getElementById('fbtn-delete').addEventListener('click', (e) => {
+      e.stopPropagation(); deleteNode();
     });
 
     // 키보드 단축키
