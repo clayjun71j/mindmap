@@ -161,7 +161,7 @@
 
   <span id="measurer"></span>
 
-  <!-- 마인드맵 목록 및 삭제 팝업 -->
+  <!-- 마인드맵 목록 팝업 -->
   <div id="modal-overlay">
     <div id="modal">
       <div id="modal-header">
@@ -211,9 +211,9 @@
       }
     });
 
-    // ---------- 설정 ----------
-    const H_GAP = 40;
-    const V_GAP = 18;
+    // ---------- 간격 설정 (충돌 차단) ----------
+    const H_GAP = 40;   // 부모-자식 가로 간격
+    const V_GAP = 24;   // 형제 가지 간 수직 최소 여백
     const NUDGE = 20;
 
     const PALETTE = [
@@ -338,26 +338,24 @@
       pushToCloud();
     }
 
-    // ---------- 레이아웃 계산 ----------
-    function computeSubtreeBounds(n) {
+    // ---------- 완벽한 겹침/교차 차단 레이아웃 계산 ----------
+    function computeTreeHeight(n) {
       const ch = childrenOf(n.id);
-      const myHeight = n.h || 36;
+      const myH = n.h || 38;
       if (!ch.length) {
-        n._sh = myHeight;
-        return;
+        n._sh = myH;
+        return n._sh;
       }
-
-      let totalHeight = 0;
-      ch.forEach((c, idx) => {
-        computeSubtreeBounds(c);
-        totalHeight += c._sh;
-        if (idx > 0) totalHeight += V_GAP;
-      });
-
-      n._sh = Math.max(myHeight, totalHeight);
+      let childSum = 0;
+      for (let i = 0; i < ch.length; i++) {
+        childSum += computeTreeHeight(ch[i]);
+      }
+      childSum += V_GAP * (ch.length - 1);
+      n._sh = Math.max(myH, childSum);
+      return n._sh;
     }
 
-    function layoutSubtree(n, x, topY) {
+    function layoutTree(n, x, topY) {
       n.ax = x;
       n.ay = topY + (n._sh - n.h) / 2;
       n.x = n.ax + (n.dx || 0);
@@ -366,19 +364,19 @@
       const ch = childrenOf(n.id);
       if (!ch.length) return;
 
-      let childrenTotalH = 0;
-      ch.forEach((c, idx) => {
-        childrenTotalH += c._sh;
-        if (idx > 0) childrenTotalH += V_GAP;
-      });
+      let childTotalH = 0;
+      for (let i = 0; i < ch.length; i++) {
+        childTotalH += ch[i]._sh;
+      }
+      childTotalH += V_GAP * (ch.length - 1);
 
-      let curY = (n.y + n.h / 2) - (childrenTotalH / 2);
-      const childX = n.x + n.w + H_GAP;
+      let curTop = (n.ay + n.h / 2) - childTotalH / 2;
+      const nextX = n.ax + n.w + H_GAP;
 
-      ch.forEach(c => {
-        layoutSubtree(c, childX, curY);
-        curY += c._sh + V_GAP;
-      });
+      for (let i = 0; i < ch.length; i++) {
+        layoutTree(ch[i], nextX, curTop);
+        curTop += ch[i]._sh + V_GAP;
+      }
     }
 
     // ---------- 렌더 ----------
@@ -390,7 +388,7 @@
       el.addEventListener('dblclick', (e) => { 
         e.stopPropagation(); 
         selectNode(n.id, false); 
-        startEdit(); // 더블클릭 시 편집 모드 진입 및 중앙 정렬
+        startEdit();
       });
       canvas.appendChild(el);
       els[n.id] = el;
@@ -431,8 +429,8 @@
 
       const root = rootNode();
       if (root) {
-        computeSubtreeBounds(root);
-        layoutSubtree(root, 0, 0);
+        computeTreeHeight(root);
+        layoutTree(root, 0, 0);
       }
 
       nodes.forEach(n => {
@@ -488,7 +486,6 @@
     function selectNode(id, center) {
       selectedNodeId = id;
       nodes.forEach(n => { if (els[n.id]) styleNodeEl(els[n.id], n); });
-      // center 파라미터가 명시적으로 true일 때만 화면 이동
       if (center) centerOnNode(byId(id), true);
     }
 
@@ -496,7 +493,7 @@
       if (isEditing) finishEdit(true, false);
       const r = rootNode();
       selectNode(r.id, false);
-      centerOnNode(r, true); // F6 / Esc 누르면 중심 주제로 이동
+      centerOnNode(r, true);
     }
 
     function measureText(t, bold) {
@@ -506,13 +503,12 @@
       return measurer.offsetWidth;
     }
 
-    // 텍스트 입력 상태 진입 (이때 화면 중심으로 이동)
     function startEdit() {
       const n = byId(selectedNodeId);
       if (!n || isEditing) return;
       isEditing = true; editingId = n.id; editSnapshot = snapshot();
 
-      // 텍스트 입력창이 열릴 때 화면 중심으로 부드럽게 이동
+      // 텍스트 입력 모드에서만 중앙 이동
       centerOnNode(n, true);
 
       const el = els[n.id];
@@ -556,7 +552,7 @@
       if (center && n) centerOnNode(n, true);
     }
 
-    // ---------- 노드 조작 ----------
+    // ---------- 노드 조작 (오프셋 0 초기화 적용) ----------
     function addChild() {
       const p = byId(selectedNodeId);
       if (!p) return;
@@ -565,8 +561,8 @@
       nodes.push(n);
       saveState();
       render();
-      selectNode(n.id, false); // 단순 선택 시 화면 이동 X
-      startEdit();             // 입력창 열리며 중앙 이동
+      selectNode(n.id, false);
+      startEdit();
     }
 
     function addSibling() {
@@ -580,8 +576,8 @@
       nodes.splice(idx + 1, 0, n);
       saveState();
       render();
-      selectNode(n.id, false); // 단순 선택 시 화면 이동 X
-      startEdit();             // 입력창 열리며 중앙 이동
+      selectNode(n.id, false);
+      startEdit();
     }
 
     function deleteNode() {
@@ -604,7 +600,8 @@
       if (!node || !newParent || node.isRoot) return false;
       if (node.id === newParent.id || isDescendant(newParent, node.id)) return false;
       node.parentId = newParent.id;
-      node.dx = 0; node.dy = 0;
+      node.dx = 0; 
+      node.dy = 0; // 편입 시 꼬임 방지를 위해 오프셋 완전히 리셋
       if (newParent.isRoot) node.colorIndex = freeColorIndex(node.id);
       nodes.splice(nodes.indexOf(node), 1);
       nodes.push(node);
@@ -616,7 +613,7 @@
       const cur = byId(selectedNodeId);
       if (!cur || cur.isRoot) return;
       if (isEditing) finishEdit(true, false);
-      if (byId(cur.parentId).isRoot) { return; }
+      if (byId(cur.parentId).isRoot) return;
       reparent(cur, rootNode(), true);
       render();
     }
@@ -632,7 +629,10 @@
     function resetOffsets(all) {
       const cur = byId(selectedNodeId);
       nodes.forEach(n => {
-        if (all || n.id === cur.id || isDescendant(n, cur.id)) { n.dx = 0; n.dy = 0; }
+        if (all || n.id === cur.id || isDescendant(n, cur.id)) { 
+          n.dx = 0; 
+          n.dy = 0; 
+        }
       });
       saveState();
       render();
@@ -660,7 +660,7 @@
       restore(redoStack.pop());
     }
 
-    // ---------- 방향키 탐색 (선택만 변경, 화면 이동 X) ----------
+    // ---------- 방향키 탐색 ----------
     function navigate(dir) {
       const cur = byId(selectedNodeId);
       if (!cur) return;
@@ -693,7 +693,7 @@
           target = best;
         }
       }
-      if (target) selectNode(target.id, false); // 방향키 탐색 시 화면 이동 안 함
+      if (target) selectNode(target.id, false);
     }
 
     // ---------- 키보드 이벤트 ----------
@@ -727,7 +727,7 @@
       if (k === '0') { e.preventDefault(); setZoom(1); return; }
     }, true);
 
-    // ---------- 마우스 조작 (단순 클릭 시 화면 이동 X) ----------
+    // ---------- 마우스 조작 ----------
     let drag = null;
     let pan = null;
 
@@ -737,7 +737,7 @@
       const id = +this.dataset.id;
       if (isEditing && editingId !== id) finishEdit(true, false);
       if (isEditing) return;
-      selectNode(id, false); // 단순 마우스 클릭 시 화면 이동 안 함
+      selectNode(id, false);
       const n = byId(id);
       drag = { 
         id: id, 
