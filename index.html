@@ -202,9 +202,9 @@
       }
     });
 
-    // ---------- 설정 ----------
-    const H_GAP = 70;
-    const V_GAP = 18;
+    // ---------- 설정 (간격 보정) ----------
+    const H_GAP = 80;   // 부모-자식 가로 간격
+    const V_GAP = 24;   // 형제 간 최소 세로 간격(겹침 방지 위해 상향)
     const NUDGE = 20;
 
     const PALETTE = [
@@ -330,29 +330,44 @@
       pushToCloud();
     }
 
-    // ---------- 레이아웃 ----------
+    // ---------- 레이아웃 (겹침 방지 정밀 계산) ----------
     function subtreeH(n) {
       const ch = childrenOf(n.id);
-      if (!ch.length) { n._sh = n.h; return n._sh; }
-      let s = 0;
-      ch.forEach(c => { s += subtreeH(c); });
-      s += V_GAP * (ch.length - 1);
-      n._sh = Math.max(n.h, s);
+      const myHeight = n.h || 38; // 최소 기본 높이 보장
+      if (!ch.length) { 
+        n._sh = myHeight; 
+        return n._sh; 
+      }
+      let childSum = 0;
+      ch.forEach(c => { 
+        childSum += subtreeH(c); 
+      });
+      childSum += V_GAP * (ch.length - 1);
+      n._sh = Math.max(myHeight, childSum);
       return n._sh;
     }
+
     function place(n, x, top) {
       n.ax = x;
       n.ay = top + (n._sh - n.h) / 2;
       n.x = n.ax + (n.dx || 0);
       n.y = n.ay + (n.dy || 0);
+      
       const ch = childrenOf(n.id);
       if (!ch.length) return;
-      let total = 0;
-      ch.forEach(c => { total += c._sh; });
-      total += V_GAP * (ch.length - 1);
-      let cy = n.y + n.h / 2 - total / 2;
+
+      let totalChildHeight = 0;
+      ch.forEach(c => { totalChildHeight += c._sh; });
+      totalChildHeight += V_GAP * (ch.length - 1);
+
+      // 부모의 중심선에 맞춰 자식들의 전체 블록 중심을 일치시킴
+      let cy = (n.y + n.h / 2) - totalChildHeight / 2;
       const cx = n.x + n.w + H_GAP;
-      ch.forEach(c => { place(c, cx, cy); cy += c._sh + V_GAP; });
+
+      ch.forEach(c => {
+        place(c, cx, cy);
+        cy += c._sh + V_GAP;
+      });
     }
 
     // ---------- 렌더 ----------
@@ -385,7 +400,12 @@
         const el = els[n.id] || createNodeEl(n);
         styleNodeEl(el, n);
       });
-      nodes.forEach(n => { n.w = els[n.id].offsetWidth; n.h = els[n.id].offsetHeight; });
+      // 렌더링된 요소의 실측 크기를 먼저 읽어옴
+      nodes.forEach(n => { 
+        n.w = Math.max(els[n.id].offsetWidth, 60); 
+        n.h = Math.max(els[n.id].offsetHeight, 36); 
+      });
+
       const root = rootNode();
       if (root) {
         subtreeH(root);
@@ -443,13 +463,13 @@
     function selectNode(id, center) {
       selectedNodeId = id;
       nodes.forEach(n => { if (els[n.id]) styleNodeEl(els[n.id], n); });
-      if (center) centerOnNode(byId(id), true); // 선택된 하위 노드를 화면 중심으로 이동
+      if (center) centerOnNode(byId(id), true);
     }
     function goRoot() {
       if (isEditing) finishEdit(true, false);
       const r = rootNode();
       selectNode(r.id, false);
-      centerOnNode(r, true); // F6 또는 Esc 클릭 시 중심 주제를 화면 중앙으로
+      centerOnNode(r, true);
     }
     function measureText(t, bold) {
       measurer.style.fontWeight = bold ? '700' : '400';
@@ -666,7 +686,7 @@
       if (k === '0') { e.preventDefault(); setZoom(1); return; }
     }, true);
 
-    // ---------- 마우스 드래그 & 편입 ----------
+    // ---------- 마우스 조작 ----------
     let drag = null;
     let pan = null;
 
@@ -676,7 +696,7 @@
       const id = +this.dataset.id;
       if (isEditing && editingId !== id) finishEdit(true, false);
       if (isEditing) return;
-      selectNode(id, true); // 마우스 클릭 시 해당 노드를 화면 중앙으로 이동
+      selectNode(id, true);
       const n = byId(id);
       drag = { 
         id: id, 
