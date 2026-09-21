@@ -88,7 +88,7 @@
     
     #world {
       position: absolute; left: 0; top: 0; transform-origin: 0 0;
-      transition: transform 0.22s ease-out, opacity 0.15s ease-out;
+      transition: transform 0.22s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.15s ease-out;
       will-change: transform, opacity; opacity: 0;
     }
     #world.ready { opacity: 1; }
@@ -415,7 +415,7 @@
     let isEditing = false;
     let editingId = null;
     let editSnapshot = null;
-    let isNewNodeEditing = false; // 새로 추가되어 입력 대기 중인 노드 플래그
+    let isNewNodeEditing = false;
 
     let zoom = 1.0, panX = 0, panY = 0;
     let undoStack = [], redoStack = [];
@@ -687,6 +687,7 @@
       bRoot.dx = 0; bRoot.dy = 0;
       saveState();
       render();
+      ensureNodeVisible(cur, true);
     }
 
     let lastClickTime = 0;
@@ -704,7 +705,7 @@
         const now = Date.now();
         if (lastClickedNodeId === n.id && (now - lastClickTime < 350)) {
           e.stopPropagation();
-          selectNode(n.id, false);
+          selectNode(n.id);
           startEdit();
           lastClickTime = 0;
           lastClickedNodeId = null;
@@ -717,7 +718,7 @@
       el.addEventListener('dblclick', (e) => { 
         if (e.target.closest && e.target.closest('.link-badge')) return;
         e.stopPropagation(); 
-        selectNode(n.id, false); 
+        selectNode(n.id); 
         startEdit();
       });
 
@@ -726,7 +727,7 @@
         if (e.target.closest && e.target.closest('.link-badge')) return;
         if (isEditing && editingId === n.id) return;
         const now = Date.now();
-        selectNode(n.id, false);
+        selectNode(n.id);
         if (now - lastTouchTime < 350) {
           e.preventDefault(); 
           e.stopPropagation(); 
@@ -856,6 +857,7 @@
       world.style.transform = 'translate(' + panX + 'px,' + panY + 'px) scale(' + zoom + ')';
     }
 
+    // 중심 정렬 (F6 키 또는 명시적 초기 진입 시 사용)
     function centerOnNode(n, animate) {
       if (!n) return;
       if (animate === false) {
@@ -872,16 +874,68 @@
       updateTransform();
     }
 
+    // 스마트 뷰포트 여백 스크롤: 화면 경계(80px)를 벗어날 때만 화면을 이동
+    function ensureNodeVisible(n, animate = true) {
+      if (!n) return;
+      const vw = viewport.clientWidth || window.innerWidth;
+      const vh = viewport.clientHeight || window.innerHeight;
+
+      // 상단 툴바와 모바일 가장자리 UI를 배려한 안전 여백 (픽셀)
+      const margin = 80;
+
+      // 화면(스크린) 기준 노드의 현재 4방향 좌표
+      const nodeScreenLeft = panX + n.x * zoom;
+      const nodeScreenRight = panX + (n.x + n.w) * zoom;
+      const nodeScreenTop = panY + n.y * zoom;
+      const nodeScreenBottom = panY + (n.y + n.h) * zoom;
+
+      let deltaPanX = 0;
+      let deltaPanY = 0;
+
+      // 좌측 경계를 벗어남
+      if (nodeScreenLeft < margin) {
+        deltaPanX = margin - nodeScreenLeft;
+      } 
+      // 우측 경계를 벗어남
+      else if (nodeScreenRight > vw - margin) {
+        deltaPanX = (vw - margin) - nodeScreenRight;
+      }
+
+      // 상단 경계를 벗어남 (툴바 60px 공간 감안)
+      if (nodeScreenTop < margin + 20) {
+        deltaPanY = (margin + 20) - nodeScreenTop;
+      } 
+      // 하단 경계를 벗어남
+      else if (nodeScreenBottom > vh - margin) {
+        deltaPanY = (vh - margin) - nodeScreenBottom;
+      }
+
+      // 화면 밖으로 벗어났을 때만 부드럽게 필요한 만큼만 밀어줌
+      if (deltaPanX !== 0 || deltaPanY !== 0) {
+        if (animate === false) {
+          world.classList.add('notrans');
+        } else {
+          world.classList.remove('notrans');
+        }
+        panX += deltaPanX;
+        panY += deltaPanY;
+        updateTransform();
+      }
+    }
+
     function setZoom(z, keepNode) {
       zoom = Math.min(2.5, Math.max(0.3, z));
       centerOnNode(keepNode || byId(selectedNodeId) || rootNode(), true);
     }
 
-    function selectNode(id, center) {
+    function selectNode(id) {
       selectedNodeId = id;
       nodes.forEach(n => { if (els[n.id]) styleNodeEl(els[n.id], n); });
       updateControlsPosition();
-      if (center && id) centerOnNode(byId(id), true);
+      
+      // 노드가 화면 경계를 벗어났을 때만 화면을 살짝 밀어줌
+      const n = byId(id);
+      if (n) ensureNodeVisible(n, true);
     }
 
     function deselectAll() {
@@ -893,7 +947,9 @@
     function goRoot() {
       if (isEditing) finishEdit(true, false);
       const r = rootNode();
-      selectNode(r.id, false);
+      selectedNodeId = r.id;
+      nodes.forEach(n => { if (els[n.id]) styleNodeEl(els[n.id], n); });
+      updateControlsPosition();
       centerOnNode(r, true);
     }
 
@@ -912,7 +968,9 @@
       editSnapshot = snapshot();
       isNewNodeEditing = isNew;
       nodeControls.style.display = 'none';
-      centerOnNode(n, true);
+
+      // 입력 상태 시 화면을 강제로 중간으로 흔들지 않고, 화면 바깥쪽일 때만 80px 안쪽으로 들어오게 함
+      ensureNodeVisible(n, true);
 
       const el = els[n.id];
       el.innerHTML = '';
@@ -920,18 +978,22 @@
       input.className = 'node-input';
       input.value = n.text;
       input.placeholder = '주제 입력...';
-      const fit = () => { input.style.width = Math.max(60, measureText(input.value || input.placeholder, n.isRoot || n.bold) + 20) + 'px'; render(); };
+      const fit = () => { 
+        input.style.width = Math.max(60, measureText(input.value || input.placeholder, n.isRoot || n.bold) + 20) + 'px'; 
+        render(); 
+        ensureNodeVisible(n, true);
+      };
       input.addEventListener('input', fit);
       input.addEventListener('mousedown', e => e.stopPropagation());
       input.addEventListener('touchstart', e => e.stopPropagation(), { passive: true });
       input.addEventListener('keydown', (e) => {
         e.stopPropagation();
-        if (e.key === 'Enter') { e.preventDefault(); finishEdit(true, false); }
-        else if (e.key === 'Escape') { e.preventDefault(); finishEdit(false, false); }
-        else if (e.key === 'Tab') { e.preventDefault(); finishEdit(true, false); addChild(); }
+        if (e.key === 'Enter') { e.preventDefault(); finishEdit(true); }
+        else if (e.key === 'Escape') { e.preventDefault(); finishEdit(false); }
+        else if (e.key === 'Tab') { e.preventDefault(); finishEdit(true); addChild(); }
         else if (e.key === 'F6') { e.preventDefault(); goRoot(); }
       });
-      input.addEventListener('blur', () => { if (isEditing && editingId === n.id) finishEdit(true, false); });
+      input.addEventListener('blur', () => { if (isEditing && editingId === n.id) finishEdit(true); });
       el.appendChild(input);
       input.style.width = Math.max(60, measureText(n.text || input.placeholder, n.isRoot || n.bold) + 20) + 'px';
       render();
@@ -939,7 +1001,7 @@
       input.select();
     }
 
-    function finishEdit(commit, center) {
+    function finishEdit(commit) {
       if (!isEditing) return;
       const n = byId(editingId);
       const el = els[editingId];
@@ -956,12 +1018,12 @@
 
       const v = input ? input.value.trim() : '';
 
-      // 신규 노드인데 아무것도 입력하지 않았거나 취소된 경우 자동 삭제
       if (wasNew && !v) {
         const parentId = n.parentId;
         nodes = nodes.filter(item => item.id !== targetId);
         selectedNodeId = parentId;
         render();
+        if (parentId) ensureNodeVisible(byId(parentId), true);
         return;
       }
 
@@ -969,12 +1031,11 @@
         n.text = v;
         saveState(snap);
       } else if (!v && !n.isRoot) {
-        // 기존 노드라도 내용을 전부 지웠을 경우 원복
         n.text = n.text || '주제';
       }
 
       render();
-      if (center && n) centerOnNode(n, true);
+      ensureNodeVisible(n, true);
     }
 
     function addChild() {
@@ -982,7 +1043,7 @@
       if (!p) return;
       const n = { 
         id: nextId++, 
-        text: '', // 공란으로 생성
+        text: '', 
         parentId: p.id, 
         isRoot: false,
         colorIndex: p.isRoot ? freeColorIndex() : null, 
@@ -990,8 +1051,8 @@
       };
       nodes.push(n);
       render();
-      selectNode(n.id, false);
-      startEdit(true); // 새 노드 상태로 진입
+      selectNode(n.id);
+      startEdit(true);
     }
 
     function addSibling() {
@@ -1001,7 +1062,7 @@
       const p = byId(cur.parentId);
       const n = { 
         id: nextId++, 
-        text: '', // 공란으로 생성
+        text: '', 
         parentId: cur.parentId, 
         isRoot: false,
         colorIndex: p && p.isRoot ? freeColorIndex() : null, 
@@ -1010,8 +1071,8 @@
       const idx = nodes.indexOf(cur);
       nodes.splice(idx + 1, 0, n);
       render();
-      selectNode(n.id, false);
-      startEdit(true); // 새 노드 상태로 진입
+      selectNode(n.id);
+      startEdit(true);
     }
 
     function deleteNode() {
@@ -1027,7 +1088,7 @@
       nodes = nodes.filter(n => !removeIds.has(n.id));
       saveState();
       render();
-      selectNode(parentId, false);
+      selectNode(parentId);
     }
 
     function reparent(node, newParent, pushUndo) {
@@ -1063,6 +1124,8 @@
       });
       saveState();
       render();
+      const n = byId(rootNodeId);
+      if (n) ensureNodeVisible(n, true);
     }
 
     function resetOffsets(targetRootId) {
@@ -1076,11 +1139,11 @@
       }
       saveState();
       render();
-      if (selectedNodeId) centerOnNode(byId(selectedNodeId), true);
+      if (selectedNodeId) ensureNodeVisible(byId(selectedNodeId), true);
     }
 
     function undo() {
-      if (isEditing) finishEdit(true, false);
+      if (isEditing) finishEdit(true);
       if (!undoStack.length) return;
       redoStack.push(snapshot());
       nodes = JSON.parse(undoStack.pop());
@@ -1088,10 +1151,11 @@
       if (selectedNodeId && !byId(selectedNodeId)) selectedNodeId = null;
       pushToCloud();
       render();
+      if (selectedNodeId) ensureNodeVisible(byId(selectedNodeId), true);
     }
 
     function redo() {
-      if (isEditing) finishEdit(true, false);
+      if (isEditing) finishEdit(true);
       if (!redoStack.length) return;
       undoStack.push(snapshot());
       nodes = JSON.parse(redoStack.pop());
@@ -1099,8 +1163,10 @@
       if (selectedNodeId && !byId(selectedNodeId)) selectedNodeId = null;
       pushToCloud();
       render();
+      if (selectedNodeId) ensureNodeVisible(byId(selectedNodeId), true);
     }
 
+    // 방향키 탐색: 경계(80px) 밖으로 나갈 때만 화면 이동
     function navigate(dir) {
       const cur = byId(selectedNodeId) || rootNode();
       if (!cur) return;
@@ -1150,7 +1216,7 @@
         }
       }
 
-      if (target) selectNode(target.id, false);
+      if (target) selectNode(target.id);
     }
 
     // ---------- 드래그 앤 드롭 & 공란 클릭 해제 ----------
@@ -1162,9 +1228,9 @@
 
       e.stopPropagation();
       const id = +this.dataset.id;
-      if (isEditing && editingId !== id) finishEdit(true, false);
+      if (isEditing && editingId !== id) finishEdit(true);
       if (isEditing) return;
-      selectNode(id, false);
+      selectNode(id);
       
       const n = byId(id);
       if (n.isRoot) return;
@@ -1195,7 +1261,7 @@
       if (e.button !== 0) return;
       if (e.target.closest && (e.target.closest('.node') || e.target.closest('#node-controls') || e.target.closest('#toolbar'))) return;
       
-      if (isEditing) finishEdit(true, false);
+      if (isEditing) finishEdit(true);
       deselectAll();
 
       pan = { sx: e.clientX, sy: e.clientY, px: panX, py: panY };
@@ -1289,6 +1355,7 @@
             saveState(drag.snap);
             render();
           }
+          ensureNodeVisible(n, true);
         }
         drag = null;
       }
@@ -1306,12 +1373,12 @@
       }
     }, { passive: false });
 
-    // 모바일 터치 제스처 & 공란 터치 해제
+    // 모바일 터치 제스처
     let touchPan = null, initialPinchDist = null, initialZoom = 1.0;
     viewport.addEventListener('touchstart', (e) => {
       const onTarget = e.target.closest && (e.target.closest('.node') || e.target.closest('#node-controls') || e.target.closest('#toolbar'));
       if (!onTarget) {
-        if (isEditing) finishEdit(true, false);
+        if (isEditing) finishEdit(true);
         deselectAll();
       }
 
@@ -1371,6 +1438,7 @@
         }
         saveState();
         render();
+        ensureNodeVisible(cur, true);
       }
     });
 
@@ -1437,7 +1505,7 @@
       const item = e.target.closest('.item');
       if (!item) return;
       const a = item.dataset.action;
-      if (isEditing && a !== 'edit') finishEdit(true, false);
+      if (isEditing && a !== 'edit') finishEdit(true);
       if (a === 'child') addChild();
       else if (a === 'sibling') addSibling();
       else if (a === 'edit') startEdit();
@@ -1485,7 +1553,7 @@
     });
 
     window.addEventListener('resize', () => { 
-      if (selectedNodeId) centerOnNode(byId(selectedNodeId), false); 
+      if (selectedNodeId) ensureNodeVisible(byId(selectedNodeId), false); 
     });
 
     checkRoute();
