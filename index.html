@@ -47,9 +47,17 @@
       border: 2px solid #94a3b8; background: #ffffff;
       font-size: 14px; color: #1e293b; white-space: nowrap;
       cursor: pointer; user-select: none; text-align: center; min-width: 60px;
-      transition: background-color 0.15s, box-shadow 0.15s, border-color 0.15s;
+      transition: background-color 0.15s, box-shadow 0.15s, border-color 0.15s, transform 0.15s;
     }
-    .node.root { font-weight: 700; font-size: 16px; padding: 10px 20px; color: #ffffff; }
+    .node.root { 
+      font-weight: 700; font-size: 16px; padding: 10px 20px; color: #ffffff; 
+    }
+    /* 중심주제 선택 시 시각 효과 대폭 강화 */
+    .node.root.selected {
+      box-shadow: 0 0 0 4px #fbbf24, 0 8px 20px rgba(0,0,0,0.2) !important;
+      border-color: #ffffff !important;
+      transform: scale(1.06);
+    }
     .node.dragging { opacity: 0.75; pointer-events: none !important; z-index: 100 !important; }
     .node.drag-over { 
       border-style: dashed !important; 
@@ -67,7 +75,7 @@
       font-family: inherit; top: -9999px; left: -9999px;
     }
 
-    /* 목록 팝업 스타일 */
+    /* 목록 팝업 */
     #modal-overlay {
       position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 2000;
       display: none; justify-content: center; align-items: center;
@@ -152,7 +160,7 @@
 
   <span id="measurer"></span>
 
-  <!-- 마인드맵 목록 팝업 -->
+  <!-- 마인드맵 목록 및 삭제 팝업 -->
   <div id="modal-overlay">
     <div id="modal">
       <div id="modal-header">
@@ -202,24 +210,24 @@
       }
     });
 
-    // ---------- 설정 (간격 보정) ----------
-    const H_GAP = 80;   // 부모-자식 가로 간격
-    const V_GAP = 24;   // 형제 간 최소 세로 간격(겹침 방지 위해 상향)
+    // ---------- 설정 (가로거리 축소 & 세로 안전거리 확보) ----------
+    const H_GAP = 40;   // 기존 80px에서 절반으로 축소
+    const V_GAP = 20;   // 형제 간 기본 세로 간격
     const NUDGE = 20;
 
     const PALETTE = [
-      { bd: '#ef4444', bg: '#fee2e2', sel: '#fecaca', ring: 'rgba(239,68,68,0.25)' },
-      { bd: '#f97316', bg: '#ffedd5', sel: '#fed7aa', ring: 'rgba(249,115,22,0.25)' },
-      { bd: '#eab308', bg: '#fef9c3', sel: '#fef08a', ring: 'rgba(234,179,8,0.25)' },
-      { bd: '#22c55e', bg: '#dcfce7', sel: '#bbf7d0', ring: 'rgba(34,197,94,0.25)' },
-      { bd: '#14b8a6', bg: '#ccfbf1', sel: '#99f6e4', ring: 'rgba(20,184,166,0.25)' },
-      { bd: '#0ea5e9', bg: '#e0f2fe', sel: '#bae6fd', ring: 'rgba(14,165,233,0.25)' },
-      { bd: '#6366f1', bg: '#e0e7ff', sel: '#c7d2fe', ring: 'rgba(99,102,241,0.25)' },
-      { bd: '#a855f7', bg: '#f3e8ff', sel: '#e9d5ff', ring: 'rgba(168,85,247,0.25)' },
-      { bd: '#ec4899', bg: '#fce7f3', sel: '#fbcfe8', ring: 'rgba(236,72,153,0.25)' },
-      { bd: '#84cc16', bg: '#ecfccb', sel: '#d9f99d', ring: 'rgba(132,204,22,0.25)' }
+      { bd: '#ef4444', bg: '#fee2e2', sel: '#fecaca', ring: 'rgba(239,68,68,0.35)' },
+      { bd: '#f97316', bg: '#ffedd5', sel: '#fed7aa', ring: 'rgba(249,115,22,0.35)' },
+      { bd: '#eab308', bg: '#fef9c3', sel: '#fef08a', ring: 'rgba(234,179,8,0.35)' },
+      { bd: '#22c55e', bg: '#dcfce7', sel: '#bbf7d0', ring: 'rgba(34,197,94,0.35)' },
+      { bd: '#14b8a6', bg: '#ccfbf1', sel: '#99f6e4', ring: 'rgba(20,184,166,0.35)' },
+      { bd: '#0ea5e9', bg: '#e0f2fe', sel: '#bae6fd', ring: 'rgba(14,165,233,0.35)' },
+      { bd: '#6366f1', bg: '#e0e7ff', sel: '#c7d2fe', ring: 'rgba(99,102,241,0.35)' },
+      { bd: '#a855f7', bg: '#f3e8ff', sel: '#e9d5ff', ring: 'rgba(168,85,247,0.35)' },
+      { bd: '#ec4899', bg: '#fce7f3', sel: '#fbcfe8', ring: 'rgba(236,72,153,0.35)' },
+      { bd: '#84cc16', bg: '#ecfccb', sel: '#d9f99d', ring: 'rgba(132,204,22,0.35)' }
     ];
-    const ROOT_COLOR = { bd: '#1d4ed8', bg: '#2563eb', sel: '#1e40af', ring: 'rgba(37,99,235,0.3)' };
+    const ROOT_COLOR = { bd: '#1d4ed8', bg: '#2563eb', sel: '#1e40af', ring: 'rgba(37,99,235,0.4)' };
 
     // ---------- 상태 ----------
     let nodes = [
@@ -330,43 +338,45 @@
       pushToCloud();
     }
 
-    // ---------- 레이아웃 (겹침 방지 정밀 계산) ----------
-    function subtreeH(n) {
+    // ---------- 레이아웃 (서브트리 경계 완벽 분리 계산) ----------
+    function calculateSubtreeHeight(n) {
       const ch = childrenOf(n.id);
-      const myHeight = n.h || 38; // 최소 기본 높이 보장
-      if (!ch.length) { 
-        n._sh = myHeight; 
-        return n._sh; 
+      const myHeight = n.h || 38;
+      if (!ch.length) {
+        n._sh = myHeight;
+        return n._sh;
       }
-      let childSum = 0;
-      ch.forEach(c => { 
-        childSum += subtreeH(c); 
+      let sum = 0;
+      ch.forEach(c => {
+        sum += calculateSubtreeHeight(c);
       });
-      childSum += V_GAP * (ch.length - 1);
-      n._sh = Math.max(myHeight, childSum);
+      sum += V_GAP * (ch.length - 1);
+      n._sh = Math.max(myHeight, sum);
       return n._sh;
     }
 
-    function place(n, x, top) {
+    function placeTree(n, x, top) {
       n.ax = x;
       n.ay = top + (n._sh - n.h) / 2;
       n.x = n.ax + (n.dx || 0);
       n.y = n.ay + (n.dy || 0);
-      
+
       const ch = childrenOf(n.id);
       if (!ch.length) return;
 
-      let totalChildHeight = 0;
-      ch.forEach(c => { totalChildHeight += c._sh; });
-      totalChildHeight += V_GAP * (ch.length - 1);
+      let currentTop = top;
+      // 부모 높이가 서브트리보다 큰 경우 수직 중앙 정렬 오프셋
+      if (n._sh > 0) {
+        let childTotal = 0;
+        ch.forEach(c => { childTotal += c._sh; });
+        childTotal += V_GAP * (ch.length - 1);
+        currentTop = top + (n._sh - childTotal) / 2;
+      }
 
-      // 부모의 중심선에 맞춰 자식들의 전체 블록 중심을 일치시킴
-      let cy = (n.y + n.h / 2) - totalChildHeight / 2;
-      const cx = n.x + n.w + H_GAP;
-
+      const nextX = n.x + n.w + H_GAP;
       ch.forEach(c => {
-        place(c, cx, cy);
-        cy += c._sh + V_GAP;
+        placeTree(c, nextX, currentTop);
+        currentTop += c._sh + V_GAP;
       });
     }
 
@@ -381,16 +391,24 @@
       els[n.id] = el;
       return el;
     }
+
     function styleNodeEl(el, n) {
       const c = colorOf(n);
       const selected = (n.id === selectedNodeId);
       el.classList.toggle('root', !!n.isRoot);
       el.classList.toggle('selected', selected);
-      el.style.borderColor = c.bd;
-      el.style.background = selected ? c.sel : c.bg;
-      el.style.boxShadow = selected ? ('0 0 0 3px ' + c.ring) : 'none';
+      
+      if (n.isRoot) {
+        el.style.borderColor = selected ? '#ffffff' : c.bd;
+        el.style.background = c.bg;
+      } else {
+        el.style.borderColor = c.bd;
+        el.style.background = selected ? c.sel : c.bg;
+        el.style.boxShadow = selected ? ('0 0 0 3px ' + c.ring) : 'none';
+      }
       if (!(isEditing && editingId === n.id)) el.textContent = n.text;
     }
+
     function render() {
       const alive = new Set(nodes.map(n => n.id));
       Object.keys(els).forEach(k => {
@@ -400,17 +418,19 @@
         const el = els[n.id] || createNodeEl(n);
         styleNodeEl(el, n);
       });
-      // 렌더링된 요소의 실측 크기를 먼저 읽어옴
-      nodes.forEach(n => { 
-        n.w = Math.max(els[n.id].offsetWidth, 60); 
-        n.h = Math.max(els[n.id].offsetHeight, 36); 
+
+      // 실측 크기 반영
+      nodes.forEach(n => {
+        n.w = Math.max(els[n.id].offsetWidth, 55);
+        n.h = Math.max(els[n.id].offsetHeight, 36);
       });
 
       const root = rootNode();
       if (root) {
-        subtreeH(root);
-        place(root, 0, 0);
+        calculateSubtreeHeight(root);
+        placeTree(root, 0, 0);
       }
+
       nodes.forEach(n => {
         if (els[n.id]) {
           els[n.id].style.left = n.x + 'px';
@@ -419,6 +439,7 @@
       });
       drawLines();
     }
+
     function drawLines() {
       let s = '';
       nodes.forEach(n => {
@@ -486,7 +507,7 @@
       const input = document.createElement('input');
       input.className = 'node-input';
       input.value = n.text;
-      const fit = () => { input.style.width = Math.max(60, measureText(input.value, n.isRoot) + 12) + 'px'; render(); };
+      const fit = () => { input.style.width = Math.max(55, measureText(input.value, n.isRoot) + 12) + 'px'; render(); };
       input.addEventListener('input', fit);
       input.addEventListener('mousedown', e => e.stopPropagation());
       input.addEventListener('keydown', (e) => {
@@ -498,7 +519,7 @@
       });
       input.addEventListener('blur', () => { if (isEditing && editingId === n.id) finishEdit(true, false); });
       el.appendChild(input);
-      input.style.width = Math.max(60, measureText(n.text, n.isRoot) + 12) + 'px';
+      input.style.width = Math.max(55, measureText(n.text, n.isRoot) + 12) + 'px';
       render();
       input.focus(); input.select();
     }
