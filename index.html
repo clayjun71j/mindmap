@@ -107,6 +107,10 @@
       display: inline-flex; align-items: center; justify-content: center; gap: 6px;
     }
     
+    /* 텍스트 클릭 시 이벤트 간섭 방지 */
+    .node span { pointer-events: none; }
+
+    /* 링크 뱃지 버튼 */
     .link-badge {
       display: inline-flex; align-items: center; justify-content: center;
       background: #e0f2fe; color: #0284c7; border: 1px solid #bae6fd;
@@ -247,7 +251,7 @@
     let currentRoomId = null;
     let mapRef = null;
     let isFirstLoadForRoom = true;
-    let isExistingMap = false; // DB에 이미 저장되어 있는 맵인지 여부
+    let isExistingMap = false;
 
     function checkRoute() {
       const hash = window.location.hash.replace('#', '').trim();
@@ -410,7 +414,6 @@
           syncStatus.style.color = '#10b981';
           isRemoteUpdating = false;
         } else {
-          // 서버에 없는 새 방일 경우: 화면에만 기본 뼈대를 띄우고 DB 저장은 대기 (자동 등록 방지)
           isExistingMap = false;
           nodes = [{ id: 1, text: '중심 주제', parentId: null, isRoot: true, colorIndex: null, dx: 0, dy: 0 }];
           nextId = 2;
@@ -601,16 +604,25 @@
       el.dataset.id = n.id;
       
       el.addEventListener('mousedown', onNodeMouseDown);
+      
+      // 더블클릭 이벤트 (뱃지 제외 즉시 편집)
       el.addEventListener('dblclick', (e) => { 
-        e.stopPropagation(); selectNode(n.id, false); startEdit();
+        if (e.target.closest && e.target.closest('.link-badge')) return;
+        e.stopPropagation(); 
+        selectNode(n.id, false); 
+        startEdit();
       });
 
+      // 모바일 더블탭 이벤트
       el.addEventListener('touchstart', (e) => {
+        if (e.target.closest && e.target.closest('.link-badge')) return;
         if (isEditing && editingId === n.id) return;
         const now = Date.now();
         selectNode(n.id, false);
         if (now - lastTapTime < 300) {
-          e.preventDefault(); e.stopPropagation(); startEdit();
+          e.preventDefault(); 
+          e.stopPropagation(); 
+          startEdit();
         }
         lastTapTime = now;
       }, { passive: false });
@@ -958,7 +970,7 @@
 
     function onNodeMouseDown(e) {
       if (e.button !== 0) return;
-      if (e.target.closest('.link-badge')) return;
+      if (e.target.closest && e.target.closest('.link-badge')) return;
 
       e.stopPropagation();
       const id = +this.dataset.id;
