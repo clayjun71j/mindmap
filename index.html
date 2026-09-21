@@ -107,7 +107,6 @@
       display: inline-flex; align-items: center; justify-content: center; gap: 6px;
     }
     
-    /* 링크 아이콘 뱃지 버튼 스타일 */
     .link-badge {
       display: inline-flex; align-items: center; justify-content: center;
       background: #e0f2fe; color: #0284c7; border: 1px solid #bae6fd;
@@ -206,7 +205,7 @@
     <span class="item" id="btn-list" style="color:#4f46e5; font-weight:bold;">📂 목록</span>
     <span class="item" id="btn-new-map" style="color:#059669; font-weight:bold;">➕ 새 맵</span>
     <span class="item" id="btn-copy-link" style="color:#0284c7; font-weight:bold;">🔗 주소 복사</span>
-    <span id="sync-status">● 연결됨</span>
+    <span id="sync-status">● 대기 중</span>
   </div>
 
   <div id="viewport">
@@ -248,6 +247,7 @@
     let currentRoomId = null;
     let mapRef = null;
     let isFirstLoadForRoom = true;
+    let isExistingMap = false; // DB에 이미 저장되어 있는 맵인지 여부
 
     function checkRoute() {
       const hash = window.location.hash.replace('#', '').trim();
@@ -381,6 +381,7 @@
         nextId: nextId,
         updatedAt: firebase.database.ServerValue.TIMESTAMP
       }).then(() => {
+        isExistingMap = true;
         syncStatus.textContent = '● 실시간 동기화됨';
         syncStatus.style.color = '#10b981';
       }).catch(err => {
@@ -393,6 +394,7 @@
       mapRef.on('value', (snapshot) => {
         const data = snapshot.val();
         if (data && data.nodes) {
+          isExistingMap = true;
           isRemoteUpdating = true;
           nodes = data.nodes;
           nextId = data.nextId || 2;
@@ -404,15 +406,20 @@
             centerOnNode(rootNode(), false);
             requestAnimationFrame(() => { world.classList.add('ready'); });
           }
+          syncStatus.textContent = '● 실시간 동기화됨';
+          syncStatus.style.color = '#10b981';
           isRemoteUpdating = false;
         } else {
+          // 서버에 없는 새 방일 경우: 화면에만 기본 뼈대를 띄우고 DB 저장은 대기 (자동 등록 방지)
+          isExistingMap = false;
           nodes = [{ id: 1, text: '중심 주제', parentId: null, isRoot: true, colorIndex: null, dx: 0, dy: 0 }];
           nextId = 2;
           selectedNodeId = 1;
           render();
           centerOnNode(rootNode(), false);
           requestAnimationFrame(() => { world.classList.add('ready'); });
-          pushToCloud();
+          syncStatus.textContent = '● 새 마인드맵 (편집 시 자동 저장)';
+          syncStatus.style.color = '#64748b';
         }
       });
     }
@@ -473,7 +480,6 @@
       pushToCloud();
     }
 
-    // URL을 깔끔한 아이콘 뱃지로 분리 파싱하는 함수
     function parseNodeContent(str) {
       if (!str) return { label: '', url: null };
       const urlPattern = /(https?:\/\/[^\s]+)/;
