@@ -2,8 +2,8 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <title>단축키 마인드맵 (실시간 동기화 & 드래그 편입 강화)</title>
-  <!-- Firebase SDK 라이브러리 추가 -->
+  <title>단축키 마인드맵 (실시간 동기화 & 목록 관리 및 삭제)</title>
+  <!-- Firebase SDK 라이브러리 -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
   <style>
@@ -30,11 +30,6 @@
     }
     #sync-status {
       font-weight: 600; color: #10b981; display: flex; align-items: center; gap: 4px;
-    }
-    #hint {
-      position: fixed; bottom: 12px; left: 12px; z-index: 1000;
-      font-size: 12px; color: #64748b; background: rgba(255,255,255,0.9);
-      padding: 5px 10px; border-radius: 6px; pointer-events: none; line-height: 1.6;
     }
     #viewport { position: absolute; inset: 0; overflow: hidden; cursor: grab; }
     #viewport.panning { cursor: grabbing; }
@@ -78,7 +73,7 @@
       display: none; justify-content: center; align-items: center;
     }
     #modal {
-      background: #ffffff; border-radius: 12px; width: 440px; max-width: 90vw;
+      background: #ffffff; border-radius: 12px; width: 460px; max-width: 90vw;
       box-shadow: 0 10px 25px rgba(0,0,0,0.15); padding: 20px; display: flex;
       flex-direction: column; max-height: 80vh;
     }
@@ -91,12 +86,12 @@
     }
     #modal-close:hover { color: #0f172a; }
     #map-list {
-      overflow-y: auto; display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px;
+      overflow-y: auto; display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px;
     }
     .map-item {
       padding: 10px 14px; border: 1px solid #e2e8f0; border-radius: 8px;
       cursor: pointer; display: flex; justify-content: space-between; align-items: center;
-      transition: all 0.15s;
+      transition: all 0.15s; background: #fff;
     }
     .map-item:hover {
       background: #f8fafc; border-color: #2563eb;
@@ -104,8 +99,20 @@
     .map-item.current {
       background: #eff6ff; border-color: #3b82f6; font-weight: 600;
     }
+    .map-info {
+      display: flex; flex-direction: column; gap: 2px; overflow: hidden; text-overflow: ellipsis;
+    }
     .map-title { color: #1e293b; font-size: 14px; }
     .map-id { color: #94a3b8; font-size: 11px; font-family: monospace; }
+    
+    .btn-delete-map {
+      background: transparent; border: none; color: #94a3b8;
+      padding: 6px 8px; border-radius: 6px; cursor: pointer;
+      font-size: 12px; transition: all 0.15s; margin-left: 8px;
+    }
+    .btn-delete-map:hover {
+      background: #fee2e2; color: #ef4444; font-weight: bold;
+    }
   </style>
 </head>
 <body>
@@ -143,10 +150,6 @@
     </div>
   </div>
 
-  <div id="hint">
-    주제를 <b>드래그하여 다른 주제 위에 놓으면</b> 그 주제의 하위로 바로 이동합니다.<br>
-    빈 공간으로 드래그하면 위치 미세 조정 · <b>Ctrl+M</b> 중심 주제 아래로 편입
-  </div>
   <span id="measurer"></span>
 
   <!-- 마인드맵 목록 팝업 -->
@@ -269,7 +272,7 @@
           nextId = data.nextId || 2;
           if (!byId(selectedNodeId)) selectedNodeId = rootNode().id;
           render();
-          centerOnNode(rootNode(), false);
+          centerOnNode(byId(selectedNodeId), false);
           isRemoteUpdating = false;
         } else {
           nodes = [{ id: 1, text: '중심 주제', parentId: null, isRoot: true, colorIndex: null, dx: 0, dy: 0 }];
@@ -358,7 +361,7 @@
       el.className = 'node';
       el.dataset.id = n.id;
       el.addEventListener('mousedown', onNodeMouseDown);
-      el.addEventListener('dblclick', (e) => { e.stopPropagation(); selectNode(n.id, false); startEdit(); });
+      el.addEventListener('dblclick', (e) => { e.stopPropagation(); selectNode(n.id, true); startEdit(); });
       canvas.appendChild(el);
       els[n.id] = el;
       return el;
@@ -440,13 +443,13 @@
     function selectNode(id, center) {
       selectedNodeId = id;
       nodes.forEach(n => { if (els[n.id]) styleNodeEl(els[n.id], n); });
-      if (center) centerOnNode(byId(id), true);
+      if (center) centerOnNode(byId(id), true); // 선택된 하위 노드를 화면 중심으로 이동
     }
     function goRoot() {
       if (isEditing) finishEdit(true, false);
       const r = rootNode();
       selectNode(r.id, false);
-      centerOnNode(r, true);
+      centerOnNode(r, true); // F6 또는 Esc 클릭 시 중심 주제를 화면 중앙으로
     }
     function measureText(t, bold) {
       measurer.style.fontWeight = bold ? '700' : '400';
@@ -663,7 +666,7 @@
       if (k === '0') { e.preventDefault(); setZoom(1); return; }
     }, true);
 
-    // ---------- 마우스 드래그 & 편입 로직 (핵심 개선) ----------
+    // ---------- 마우스 드래그 & 편입 ----------
     let drag = null;
     let pan = null;
 
@@ -673,7 +676,7 @@
       const id = +this.dataset.id;
       if (isEditing && editingId !== id) finishEdit(true, false);
       if (isEditing) return;
-      selectNode(id, false);
+      selectNode(id, true); // 마우스 클릭 시 해당 노드를 화면 중앙으로 이동
       const n = byId(id);
       drag = { 
         id: id, 
@@ -711,7 +714,7 @@
         const mx = e.clientX - drag.sx, my = e.clientY - drag.sy;
         if (!drag.moved) {
           if (Math.abs(mx) < 5 && Math.abs(my) < 5) return;
-          if (n.isRoot) { drag = null; return; } // 중심 주제는 드래그 편입 불가
+          if (n.isRoot) { drag = null; return; }
           drag.moved = true;
           els[n.id].classList.add('dragging');
         }
@@ -719,12 +722,10 @@
         n.dy = drag.ody + my / zoom;
         render();
 
-        // 드롭 대상 노드 판별
         const under = document.elementFromPoint(e.clientX, e.clientY);
         const overEl = under && under.closest ? under.closest('.node') : null;
         let overId = overEl ? +overEl.dataset.id : null;
 
-        // 나 자신, 내 기존 부모, 또는 내 하위 자식 노드 위에는 편입할 수 없음
         if (overId !== null) {
           const t = byId(overId);
           if (!t || t.id === n.id || t.id === n.parentId || isDescendant(t, n.id)) {
@@ -750,18 +751,15 @@
             els[drag.over].classList.remove('drag-over');
           }
           
-          // 다른 노드 위에서 마우스를 놓았을 때 -> 하위 주제로 편입
           if (drag.over !== null) {
             const targetParent = byId(drag.over);
-            n.dx = 0; 
-            n.dy = 0; // 오프셋 초기화
+            n.dx = 0; n.dy = 0;
             if (reparent(n, targetParent, false)) {
               saveState(drag.snap);
             }
             render();
             centerOnNode(n, true);
           } else {
-            // 빈 공간에 놓았을 때 -> 위치 미세 조정 저장
             saveState(drag.snap);
             render();
           }
@@ -781,18 +779,22 @@
       }
     }, { passive: false });
 
-    // ---------- 목록 팝업 열기/닫기/조회 ----------
+    // ---------- 목록 팝업 열기/닫기/조회 & 삭제 ----------
     const modalOverlay = document.getElementById('modal-overlay');
     const mapListContainer = document.getElementById('map-list');
 
     function openModal() {
       modalOverlay.style.display = 'flex';
+      loadMapList();
+    }
+
+    function loadMapList() {
       mapListContainer.innerHTML = '<div style="text-align:center; color:#94a3b8; font-size:13px; padding:20px;">목록을 불러오는 중...</div>';
       
       db.ref('mindmaps').once('value').then(snapshot => {
         const data = snapshot.val();
         mapListContainer.innerHTML = '';
-        if (!data) {
+        if (!data || Object.keys(data).length === 0) {
           mapListContainer.innerHTML = '<div style="text-align:center; color:#94a3b8; font-size:13px; padding:20px;">저장된 마인드맵이 없습니다.</div>';
           return;
         }
@@ -803,19 +805,49 @@
           item.className = 'map-item' + (key === currentRoomId ? ' current' : '');
           
           const titleText = mapData.title || (mapData.nodes && mapData.nodes[0] ? mapData.nodes[0].text : '중심 주제');
+          
           item.innerHTML = `
-            <span class="map-title">${titleText}</span>
-            <span class="map-id">#${key}</span>
+            <div class="map-info">
+              <span class="map-title">${titleText}</span>
+              <span class="map-id">#${key}</span>
+            </div>
+            <button class="btn-delete-map" title="이 마인드맵 삭제">🗑️ 삭제</button>
           `;
           
-          item.addEventListener('click', () => {
+          item.addEventListener('click', (e) => {
+            if (e.target.closest('.btn-delete-map')) return;
             window.location.hash = key;
             closeModal();
           });
+
+          const deleteBtn = item.querySelector('.btn-delete-map');
+          deleteBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (confirm(`'${titleText}' 마인드맵을 완전히 삭제하시겠습니까?`)) {
+              deleteMap(key, Object.keys(data));
+            }
+          });
+
           mapListContainer.appendChild(item);
         });
       }).catch(err => {
         mapListContainer.innerHTML = '<div style="text-align:center; color:#ef4444; font-size:13px; padding:20px;">불러오기 실패: ' + err.message + '</div>';
+      });
+    }
+
+    function deleteMap(targetKey, allKeys) {
+      db.ref('mindmaps/' + targetKey).remove().then(() => {
+        if (targetKey === currentRoomId) {
+          const remaining = allKeys.filter(k => k !== targetKey);
+          if (remaining.length > 0) {
+            window.location.hash = remaining[0];
+          } else {
+            createNewMap();
+          }
+        }
+        loadMapList();
+      }).catch(err => {
+        alert('삭제 실패: ' + err.message);
       });
     }
 
@@ -862,7 +894,7 @@
       else if (a === 'resetSel') resetOffsets(false);
       else if (a === 'resetAll') resetOffsets(true);
       else if (a === 'zoomIn') setZoom(zoom * 1.2);
-      else if (a === 'zoomOut') setZoom(zoom / 2.2);
+      else if (a === 'zoomOut') setZoom(zoom / 1.2);
       else if (a === 'zoomReset') setZoom(1);
     });
 
