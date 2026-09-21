@@ -262,7 +262,6 @@
 
       <!-- 플로팅 터치 컨트롤러 -->
       <div id="node-controls">
-        <!-- 상단 툴바 -->
         <div class="floating-bar">
           <button class="float-btn" id="fbtn-edit" title="텍스트 수정">✏️</button>
           <button class="float-btn" id="fbtn-link" title="하이퍼링크 연결">🔗</button>
@@ -271,9 +270,7 @@
           <div class="float-sep"></div>
           <button class="float-btn" id="fbtn-delete" title="노드 삭제" style="color:#ef4444;">🗑️</button>
         </div>
-        <!-- 하위 노드 추가 (+) -->
         <div class="touch-add-btn" id="btn-touch-child" title="하위 가지 추가">+</div>
-        <!-- 동일 노드 추가 (+) -->
         <div class="touch-add-btn" id="btn-touch-sibling" title="동일 레벨 가지 추가">+</div>
       </div>
     </div>
@@ -397,8 +394,8 @@
     document.getElementById('btn-go-home').addEventListener('click', () => { window.location.hash = ''; });
 
     // ---------- 마인드맵 코어 ----------
-    const H_GAP = 40;
-    const V_GAP = 24;
+    const H_GAP = 55; // 부모-자식 간 가로 여백 충분히 확보
+    const V_GAP = 22; // 세로 노드 간격
     const NUDGE = 20;
 
     const PALETTE = [
@@ -580,13 +577,18 @@
       return `<span class="node-label">${safeLabel}</span>`;
     }
 
-    // ---------- 레이아웃 엔진 ----------
+    // ---------- 정밀 재귀 레이아웃 엔진 (가지 겹침 원천 방지) ----------
     function computeTreeHeight(n) {
       const ch = childrenOf(n.id);
       const myH = n.h || 38;
-      if (!ch.length) { n._sh = myH; return n._sh; }
+      if (!ch.length) { 
+        n._sh = myH; 
+        return n._sh; 
+      }
       let childSum = 0;
-      for (let i = 0; i < ch.length; i++) childSum += computeTreeHeight(ch[i]);
+      for (let i = 0; i < ch.length; i++) {
+        childSum += computeTreeHeight(ch[i]);
+      }
       childSum += V_GAP * (ch.length - 1);
       n._sh = Math.max(myH, childSum);
       return n._sh;
@@ -603,15 +605,19 @@
       if (!ch.length) return;
 
       let childTotalH = 0;
-      for (let i = 0; i < ch.length; i++) childTotalH += ch[i]._sh;
+      for (let i = 0; i < ch.length; i++) {
+        childTotalH += ch[i]._sh;
+      }
       childTotalH += V_GAP * (ch.length - 1);
 
       let curTop = (n.ay + n.h / 2) - childTotalH / 2;
-      const nextX = dir === 'right' ? (n.ax + n.w + H_GAP) : (n.ax - H_GAP);
 
       for (let i = 0; i < ch.length; i++) {
-        const targetX = dir === 'right' ? nextX : (nextX - (ch[i].w || 60));
-        layoutSubtreeBranch(ch[i], targetX, curTop, dir);
+        const nextX = dir === 'right' 
+          ? (n.ax + n.w + H_GAP) 
+          : (n.ax - H_GAP - (ch[i].w || 60));
+
+        layoutSubtreeBranch(ch[i], nextX, curTop, dir);
         curTop += ch[i]._sh + V_GAP;
       }
     }
@@ -642,6 +648,7 @@
         }
       });
 
+      // 오른쪽 서브트리 일괄 정렬
       if (rightBranches.length > 0) {
         let rightTotalH = 0;
         rightBranches.forEach(c => { rightTotalH += c._sh; });
@@ -656,6 +663,7 @@
         });
       }
 
+      // 왼쪽 서브트리 일괄 정렬
       if (leftBranches.length > 0) {
         let leftTotalH = 0;
         leftBranches.forEach(c => { leftTotalH += c._sh; });
@@ -759,7 +767,6 @@
       }
     }
 
-    // 플로팅 컨트롤러 위치 업데이트 및 노드 미선택 시 숨김 처리
     function updateControlsPosition() {
       const n = byId(selectedNodeId);
       if (!n || isEditing) {
@@ -802,11 +809,13 @@
         styleNodeEl(el, n);
       });
 
+      // 1차 너비/높이 동기화
       nodes.forEach(n => {
         n.w = Math.max(els[n.id].offsetWidth, 55);
         n.h = Math.max(els[n.id].offsetHeight, 36);
       });
 
+      // 2차 레이아웃 계산 및 전파
       layoutAllTrees();
 
       nodes.forEach(n => {
@@ -830,7 +839,7 @@
         const c = colorOf(n);
 
         if (n._dir === 'left') {
-          x1 = p.isRoot ? p.x : p.x;
+          x1 = p.x;
           y1 = p.y + p.h / 2;
           x2 = n.x + n.w;
           y2 = n.y + n.h / 2;
@@ -1117,7 +1126,7 @@
       if (target) selectNode(target.id, false);
     }
 
-    // ---------- 드래그 앤 드롭 & 공란 클릭 해제 ----------
+    // ---------- 드래그 앤 드롭 ----------
     let drag = null, pan = null;
 
     function onNodeMouseDown(e) {
@@ -1155,13 +1164,12 @@
       e.preventDefault();
     }
 
-    // 바탕(공란) 누를 때: 편집 완료 및 선택 해제
     viewport.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return;
       if (e.target.closest && (e.target.closest('.node') || e.target.closest('#node-controls') || e.target.closest('#toolbar'))) return;
       
       if (isEditing) finishEdit(true, false);
-      deselectAll(); // 공란 선택 시 플로팅 툴바 및 선택 테두리 닫기
+      deselectAll();
 
       pan = { sx: e.clientX, sy: e.clientY, px: panX, py: panY };
       viewport.classList.add('panning');
@@ -1277,7 +1285,7 @@
       const onTarget = e.target.closest && (e.target.closest('.node') || e.target.closest('#node-controls') || e.target.closest('#toolbar'));
       if (!onTarget) {
         if (isEditing) finishEdit(true, false);
-        deselectAll(); // 모바일 공란 터치 시 즉시 창 숨김
+        deselectAll();
       }
 
       if (e.touches.length === 1 && !onTarget) {
