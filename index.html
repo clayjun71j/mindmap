@@ -104,14 +104,21 @@
       font-size: 14px; color: #1e293b; white-space: nowrap;
       cursor: pointer; user-select: none; text-align: center; min-width: 60px;
       transition: background-color 0.15s, box-shadow 0.15s, border-color 0.15s, transform 0.15s;
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
     }
-    .node a {
-      color: #0284c7; text-decoration: underline; text-underline-offset: 3px;
-      cursor: pointer; pointer-events: auto;
+    
+    /* 링크 아이콘 뱃지 버튼 스타일 */
+    .link-badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      background: #e0f2fe; color: #0284c7; border: 1px solid #bae6fd;
+      border-radius: 12px; padding: 2px 7px; font-size: 11px; font-weight: 600;
+      text-decoration: none; cursor: pointer; line-height: 1.2;
+      transition: all 0.15s ease; pointer-events: auto;
     }
-    .node a:hover {
-      color: #0369a1; text-decoration: underline;
+    .link-badge:hover {
+      background: #0284c7; color: #ffffff; border-color: #0284c7; transform: scale(1.05);
     }
+
     .node.root { 
       font-weight: 700; font-size: 16px; padding: 10px 22px; 
       color: #0369a1; background: #e0f2fe; border-color: #38bdf8;
@@ -466,14 +473,27 @@
       pushToCloud();
     }
 
-    // 텍스트 속 URL을 하이퍼링크 HTML로 자동 치환하는 함수
-    function formatNodeText(str) {
-      if (!str) return '';
-      const urlPattern = /(https?:\/\/[^\s]+)/g;
-      const escaped = str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      return escaped.replace(urlPattern, (url) => {
-        return `<a href="${url}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();">${url}</a>`;
-      });
+    // URL을 깔끔한 아이콘 뱃지로 분리 파싱하는 함수
+    function parseNodeContent(str) {
+      if (!str) return { label: '', url: null };
+      const urlPattern = /(https?:\/\/[^\s]+)/;
+      const match = str.match(urlPattern);
+      if (match) {
+        const url = match[0];
+        let label = str.replace(url, '').trim();
+        if (!label) label = '링크';
+        return { label: label, url: url };
+      }
+      return { label: str, url: null };
+    }
+
+    function formatNodeHTML(str) {
+      const parsed = parseNodeContent(str);
+      const safeLabel = parsed.label.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      if (parsed.url) {
+        return `<span>${safeLabel}</span><a class="link-badge" href="${parsed.url}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();" title="${parsed.url}">🔗 링크</a>`;
+      }
+      return `<span>${safeLabel}</span>`;
     }
 
     // ---------- 좌우 양방향 레이아웃 엔진 ----------
@@ -609,9 +629,8 @@
         el.style.boxShadow = selected ? ('0 0 0 3px ' + c.ring) : 'none';
       }
       
-      // 편집 중이 아닐 때는 링크를 포함한 HTML로 렌더링
       if (!(isEditing && editingId === n.id)) {
-        el.innerHTML = formatNodeText(n.text);
+        el.innerHTML = formatNodeHTML(n.text);
       }
     }
 
@@ -723,10 +742,10 @@
       centerOnNode(n, true);
 
       const el = els[n.id];
-      el.textContent = '';
+      el.innerHTML = '';
       const input = document.createElement('input');
       input.className = 'node-input';
-      input.value = n.text; // 편집 시 원래 텍스트(URL) 그대로 노출
+      input.value = n.text;
       const fit = () => { input.style.width = Math.max(55, measureText(input.value, n.isRoot) + 16) + 'px'; render(); };
       input.addEventListener('input', fit);
       input.addEventListener('mousedown', e => e.stopPropagation());
@@ -933,8 +952,7 @@
 
     function onNodeMouseDown(e) {
       if (e.button !== 0) return;
-      // 하이퍼링크 클릭 시 드래그 동작을 건너뜀
-      if (e.target.tagName.toLowerCase() === 'a') return;
+      if (e.target.closest('.link-badge')) return;
 
       e.stopPropagation();
       const id = +this.dataset.id;
