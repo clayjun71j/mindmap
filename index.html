@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>단축키 & 모바일 터치 마인드맵</title>
+  <title>Clay's Mindmap Studio</title>
   <!-- Firebase SDK 라이브러리 -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
@@ -11,9 +11,63 @@
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Malgun Gothic", sans-serif;
-      width: 100vw; height: 100vh; overflow: hidden; background-color: #f1f5f9;
-      touch-action: none; /* 브라우저 기본 제스처 방지 */
+      width: 100vw; height: 100vh; overflow: hidden; background-color: #f8fafc;
+      touch-action: none;
     }
+
+    /* ---------- 홈 화면 (대시보드) 스타일 ---------- */
+    #home-view {
+      position: fixed; inset: 0; z-index: 3000;
+      background: #f8fafc; overflow-y: auto; touch-action: pan-y;
+      display: flex; flex-direction: column; align-items: center; padding: 40px 20px;
+    }
+    .home-header {
+      text-align: center; margin-bottom: 32px;
+    }
+    .home-title {
+      font-size: 28px; font-weight: 800; color: #0f172a; margin-bottom: 8px;
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+    }
+    .creator-badge {
+      display: inline-block; background: #e0f2fe; color: #0284c7;
+      font-size: 13px; font-weight: 700; padding: 4px 12px; border-radius: 20px;
+      border: 1px solid #bae6fd;
+    }
+    .home-actions {
+      display: flex; gap: 12px; margin-bottom: 30px; width: 100%; max-width: 680px;
+    }
+    .btn-create-main {
+      flex: 1; padding: 14px 20px; background: #0284c7; color: #ffffff;
+      border: none; border-radius: 10px; font-size: 16px; font-weight: 700;
+      cursor: pointer; box-shadow: 0 4px 12px rgba(2, 132, 199, 0.25);
+      transition: all 0.2s;
+    }
+    .btn-create-main:active, .btn-create-main:hover {
+      background: #0369a1; transform: translateY(-1px);
+    }
+    .home-list-container {
+      width: 100%; max-width: 680px; display: flex; flex-direction: column; gap: 12px;
+    }
+    .home-list-title {
+      font-size: 15px; font-weight: 700; color: #64748b; margin-bottom: 4px;
+    }
+    .home-map-card {
+      background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px;
+      padding: 16px 20px; display: flex; justify-content: space-between; align-items: center;
+      cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.02); transition: all 0.2s;
+    }
+    .home-map-card:hover {
+      border-color: #38bdf8; box-shadow: 0 6px 16px rgba(2,132,199,0.08); transform: translateY(-2px);
+    }
+    .card-title { font-size: 16px; font-weight: 600; color: #1e293b; margin-bottom: 4px; }
+    .card-meta { font-size: 12px; color: #94a3b8; font-family: monospace; }
+    .card-del-btn {
+      background: transparent; border: none; font-size: 14px; color: #94a3b8;
+      cursor: pointer; padding: 6px 10px; border-radius: 6px; transition: all 0.15s;
+    }
+    .card-del-btn:hover { background: #fee2e2; color: #ef4444; font-weight: 700; }
+
+    /* ---------- 마인드맵 캔버스 화면 ---------- */
     #toolbar {
       position: fixed; top: 10px; left: 10px; z-index: 1000;
       background: #ffffff; padding: 8px 12px; border-radius: 8px;
@@ -79,7 +133,7 @@
       font-family: inherit; top: -9999px; left: -9999px;
     }
 
-    /* 목록 팝업 */
+    /* 팝업 모달 */
     #modal-overlay {
       position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 2000;
       display: none; justify-content: center; align-items: center;
@@ -93,42 +147,42 @@
       display: flex; justify-content: space-between; align-items: center;
       margin-bottom: 14px; font-weight: 700; font-size: 16px; color: #1e293b;
     }
-    #modal-close {
-      cursor: pointer; font-size: 20px; color: #64748b; font-weight: normal; padding: 4px;
-    }
-    #map-list {
-      overflow-y: auto; display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px;
-    }
+    #modal-close { cursor: pointer; font-size: 20px; color: #64748b; padding: 4px; }
+    #map-list { overflow-y: auto; display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
     .map-item {
       padding: 12px 14px; border: 1px solid #e2e8f0; border-radius: 8px;
       cursor: pointer; display: flex; justify-content: space-between; align-items: center;
       transition: all 0.15s; background: #fff;
     }
-    .map-item:active, .map-item:hover {
-      background: #f8fafc; border-color: #0284c7;
-    }
-    .map-item.current {
-      background: #eff6ff; border-color: #38bdf8; font-weight: 600;
-    }
-    .map-info {
-      display: flex; flex-direction: column; gap: 2px; overflow: hidden; text-overflow: ellipsis;
-    }
-    .map-title { color: #1e293b; font-size: 14px; }
-    .map-id { color: #94a3b8; font-size: 11px; font-family: monospace; }
-    
-    .btn-delete-map {
-      background: transparent; border: none; color: #94a3b8;
-      padding: 6px 10px; border-radius: 6px; cursor: pointer;
-      font-size: 13px; transition: all 0.15s; margin-left: 8px;
-    }
-    .btn-delete-map:active, .btn-delete-map:hover {
-      background: #fee2e2; color: #ef4444; font-weight: bold;
-    }
+    .map-item:hover { background: #f8fafc; border-color: #0284c7; }
+    .map-item.current { background: #eff6ff; border-color: #38bdf8; font-weight: 600; }
   </style>
 </head>
 <body>
 
+  <!-- 1. 처음 뜨는 홈 화면 (대시보드) -->
+  <div id="home-view">
+    <div class="home-header">
+      <h1 class="home-title">🧠 Clay's Mindmap Studio</h1>
+      <span class="creator-badge">Created by Clay</span>
+    </div>
+    
+    <div class="home-actions">
+      <button class="btn-create-main" id="btn-home-create">➕ 새 마인드맵 만들기</button>
+    </div>
+
+    <div class="home-list-container">
+      <div class="home-list-title">작성된 마인드맵 목록</div>
+      <div id="home-cards-list">
+        <div style="text-align:center; color:#94a3b8; padding:30px;">목록을 불러오는 중...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. 마인드맵 작업 캔버스 화면 -->
   <div id="toolbar">
+    <span class="item" id="btn-go-home" style="color:#0284c7; font-weight:bold;">🏠 홈으로</span>
+    <span class="sep"></span>
     <span class="item" data-action="child"><span class="kbd">Tab</span>하위 추가</span>
     <span class="item" data-action="sibling"><span class="kbd">Enter</span>동일레벨 추가</span>
     <span class="item" data-action="edit"><span class="kbd">F2</span>수정</span>
@@ -137,12 +191,7 @@
     <span class="item" data-action="redo"><span class="kbd">Ctrl+Y</span>복구</span>
     <span class="sep"></span>
     <span class="item" data-action="root"><span class="kbd">F6</span>중심으로</span>
-    <span class="item" data-action="toRoot">중심주제 아래로</span>
     <span class="item" data-action="resetAll">전체 정렬</span>
-    <span class="sep"></span>
-    <span class="item" data-action="zoomIn">➕ 확대</span>
-    <span class="item" data-action="zoomOut">➖ 축소</span>
-    <span class="item" data-action="zoomReset">0️⃣ 리셋</span>
     <span class="sep"></span>
     <span class="item" id="btn-list" style="color:#4f46e5; font-weight:bold;">📂 목록</span>
     <span class="item" id="btn-new-map" style="color:#059669; font-weight:bold;">➕ 새 맵</span>
@@ -159,16 +208,14 @@
 
   <span id="measurer"></span>
 
-  <!-- 마인드맵 목록 및 삭제 팝업 -->
+  <!-- 마인드맵 내부 목록 모달 -->
   <div id="modal-overlay">
     <div id="modal">
       <div id="modal-header">
         <span>내 마인드맵 목록</span>
         <span id="modal-close">✕</span>
       </div>
-      <div id="map-list">
-        <div style="text-align:center; color:#94a3b8; font-size:13px; padding:20px;">불러오는 중...</div>
-      </div>
+      <div id="map-list"></div>
       <button id="btn-modal-new" style="padding:12px; background:#0284c7; color:#fff; border:none; border-radius:6px; font-weight:600; cursor:pointer;">+ 새 마인드맵 만들기</button>
     </div>
   </div>
@@ -187,29 +234,90 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    // ---------- 방 식별 ----------
-    function getRoomId() {
-      let hash = window.location.hash.replace('#', '').trim();
-      if (!hash) {
-        hash = 'map-' + Math.random().toString(36).substring(2, 8);
-        window.location.hash = hash;
-      }
-      return hash;
-    }
-    let currentRoomId = getRoomId();
-    let mapRef = db.ref('mindmaps/' + currentRoomId);
+    // ---------- 뷰 모드 전환 (홈 vs 마인드맵) ----------
+    const homeView = document.getElementById('home-view');
+    const homeCardsList = document.getElementById('home-cards-list');
 
-    window.addEventListener('hashchange', () => {
-      const newRoom = getRoomId();
-      if (newRoom !== currentRoomId) {
-        currentRoomId = newRoom;
-        mapRef.off();
-        mapRef = db.ref('mindmaps/' + currentRoomId);
-        bindRealtimeSync();
+    let currentRoomId = null;
+    let mapRef = null;
+
+    function checkRoute() {
+      const hash = window.location.hash.replace('#', '').trim();
+      if (!hash) {
+        // 주소에 방 번호가 없으면 홈 화면 표시
+        homeView.style.display = 'flex';
+        loadHomeList();
+      } else {
+        // 방 번호가 있으면 캔버스 표시 및 동기화 시작
+        homeView.style.display = 'none';
+        if (currentRoomId !== hash) {
+          currentRoomId = hash;
+          if (mapRef) mapRef.off();
+          mapRef = db.ref('mindmaps/' + currentRoomId);
+          bindRealtimeSync();
+        }
       }
+    }
+
+    window.addEventListener('hashchange', checkRoute);
+
+    // 홈 화면 목록 불러오기
+    function loadHomeList() {
+      homeCardsList.innerHTML = '<div style="text-align:center; color:#94a3b8; padding:30px;">목록을 불러오는 중...</div>';
+      db.ref('mindmaps').once('value').then(snapshot => {
+        const data = snapshot.val();
+        homeCardsList.innerHTML = '';
+        if (!data || Object.keys(data).length === 0) {
+          homeCardsList.innerHTML = '<div style="text-align:center; color:#94a3b8; padding:40px; background:#fff; border-radius:12px; border:1px dashed #cbd5e1;">아직 작성된 마인드맵이 없습니다.<br>위의 버튼을 눌러 첫 마인드맵을 만들어보세요!</div>';
+          return;
+        }
+
+        Object.keys(data).forEach(key => {
+          const mapData = data[key];
+          const title = mapData.title || (mapData.nodes && mapData.nodes[0] ? mapData.nodes[0].text : '중심 주제');
+          
+          const card = document.createElement('div');
+          card.className = 'home-map-card';
+          card.innerHTML = `
+            <div>
+              <div class="card-title">${title}</div>
+              <div class="card-meta">#${key}</div>
+            </div>
+            <button class="card-del-btn" title="삭제">🗑️ 삭제</button>
+          `;
+
+          card.addEventListener('click', (e) => {
+            if (e.target.closest('.card-del-btn')) return;
+            window.location.hash = key;
+          });
+
+          card.querySelector('.card-del-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (confirm(`'${title}' 마인드맵을 삭제하시겠습니까?`)) {
+              db.ref('mindmaps/' + key).remove().then(() => loadHomeList());
+            }
+          });
+
+          homeCardsList.appendChild(card);
+        });
+      });
+    }
+
+    function createNewMindmap() {
+      const newRoom = 'map-' + Math.random().toString(36).substring(2, 8);
+      window.location.hash = newRoom;
+    }
+
+    document.getElementById('btn-home-create').addEventListener('click', createNewMindmap);
+    document.getElementById('btn-new-map').addEventListener('click', createNewMindmap);
+    document.getElementById('btn-modal-new').addEventListener('click', createNewMindmap);
+
+    // 홈으로 버튼
+    document.getElementById('btn-go-home').addEventListener('click', () => {
+      window.location.hash = '';
     });
 
-    // ---------- 설정 ----------
+    // ---------- 마인드맵 코어 설정 ----------
     const H_GAP = 40;
     const V_GAP = 24;
     const NUDGE = 20;
@@ -228,10 +336,7 @@
     ];
     const ROOT_COLOR = { bd: '#38bdf8', bg: '#e0f2fe', sel: '#bae6fd', ring: 'rgba(56,189,248,0.45)' };
 
-    // ---------- 상태 ----------
-    let nodes = [
-      { id: 1, text: '중심 주제', parentId: null, isRoot: true, colorIndex: null, dx: 0, dy: 0 }
-    ];
+    let nodes = [{ id: 1, text: '중심 주제', parentId: null, isRoot: true, colorIndex: null, dx: 0, dy: 0 }];
     let nextId = 2;
     let selectedNodeId = 1;
     let isEditing = false;
@@ -252,7 +357,7 @@
 
     // ---------- 실시간 동기화 ----------
     function pushToCloud() {
-      if (isRemoteUpdating) return;
+      if (isRemoteUpdating || !mapRef) return;
       syncStatus.textContent = '● 저장 중...';
       syncStatus.style.color = '#f59e0b';
       const root = rootNode();
@@ -290,9 +395,7 @@
         }
       });
     }
-    bindRealtimeSync();
 
-    // ---------- 유틸 ----------
     function byId(id) { return nodes.find(n => n.id === id); }
     function rootNode() { return nodes.find(n => n.isRoot) || nodes[0]; }
     function childrenOf(id) { return nodes.filter(n => n.parentId === id); }
@@ -336,18 +439,13 @@
       pushToCloud();
     }
 
-    // ---------- 레이아웃 계산 ----------
+    // ---------- 레이아웃 ----------
     function computeTreeHeight(n) {
       const ch = childrenOf(n.id);
       const myH = n.h || 38;
-      if (!ch.length) {
-        n._sh = myH;
-        return n._sh;
-      }
+      if (!ch.length) { n._sh = myH; return n._sh; }
       let childSum = 0;
-      for (let i = 0; i < ch.length; i++) {
-        childSum += computeTreeHeight(ch[i]);
-      }
+      for (let i = 0; i < ch.length; i++) childSum += computeTreeHeight(ch[i]);
       childSum += V_GAP * (ch.length - 1);
       n._sh = Math.max(myH, childSum);
       return n._sh;
@@ -363,9 +461,7 @@
       if (!ch.length) return;
 
       let childTotalH = 0;
-      for (let i = 0; i < ch.length; i++) {
-        childTotalH += ch[i]._sh;
-      }
+      for (let i = 0; i < ch.length; i++) childTotalH += ch[i]._sh;
       childTotalH += V_GAP * (ch.length - 1);
 
       let curTop = (n.ay + n.h / 2) - childTotalH / 2;
@@ -377,32 +473,23 @@
       }
     }
 
-    // ---------- 렌더 & 이벤트 바인딩 ----------
     let lastTapTime = 0;
-
     function createNodeEl(n) {
       const el = document.createElement('div');
       el.className = 'node';
       el.dataset.id = n.id;
       
-      // 마우스 이벤트
       el.addEventListener('mousedown', onNodeMouseDown);
       el.addEventListener('dblclick', (e) => { 
-        e.stopPropagation(); 
-        selectNode(n.id, false); 
-        startEdit();
+        e.stopPropagation(); selectNode(n.id, false); startEdit();
       });
 
-      // 모바일 터치 이벤트 (더블 탭 지원)
       el.addEventListener('touchstart', (e) => {
         if (isEditing && editingId === n.id) return;
         const now = Date.now();
         selectNode(n.id, false);
         if (now - lastTapTime < 300) {
-          // 300ms 이내 더블 탭 -> 즉시 텍스트 편집 실행
-          e.preventDefault();
-          e.stopPropagation();
-          startEdit();
+          e.preventDefault(); e.stopPropagation(); startEdit();
         }
         lastTapTime = now;
       }, { passive: false });
@@ -475,7 +562,6 @@
       svg.innerHTML = s;
     }
 
-    // ---------- 화면 변환 (Pan & Zoom) ----------
     function updateTransform() {
       world.style.transform = 'translate(' + panX + 'px,' + panY + 'px) scale(' + zoom + ')';
     }
@@ -490,16 +576,7 @@
       zoom = Math.min(2.5, Math.max(0.3, z));
       centerOnNode(keepNode || byId(selectedNodeId), true);
     }
-    function zoomAt(factor, sx, sy) {
-      const nz = Math.min(2.5, Math.max(0.3, zoom * factor));
-      const wx = (sx - panX) / zoom, wy = (sy - panY) / zoom;
-      zoom = nz;
-      panX = sx - wx * zoom; panY = sy - wy * zoom;
-      world.classList.add('notrans');
-      updateTransform();
-    }
 
-    // ---------- 선택/편집 ----------
     function selectNode(id, center) {
       selectedNodeId = id;
       nodes.forEach(n => { if (els[n.id]) styleNodeEl(els[n.id], n); });
@@ -524,7 +601,6 @@
       const n = byId(selectedNodeId);
       if (!n || isEditing) return;
       isEditing = true; editingId = n.id; editSnapshot = snapshot();
-
       centerOnNode(n, true);
 
       const el = els[n.id];
@@ -570,7 +646,6 @@
       if (center && n) centerOnNode(n, true);
     }
 
-    // ---------- 노드 조작 ----------
     function addChild() {
       const p = byId(selectedNodeId);
       if (!p) return;
@@ -618,8 +693,7 @@
       if (!node || !newParent || node.isRoot) return false;
       if (node.id === newParent.id || isDescendant(newParent, node.id)) return false;
       node.parentId = newParent.id;
-      node.dx = 0; 
-      node.dy = 0;
+      node.dx = 0; node.dy = 0;
       if (newParent.isRoot) node.colorIndex = freeColorIndex(node.id);
       nodes.splice(nodes.indexOf(node), 1);
       nodes.push(node);
@@ -627,16 +701,7 @@
       return true;
     }
 
-    function moveToRoot() {
-      const cur = byId(selectedNodeId);
-      if (!cur || cur.isRoot) return;
-      if (isEditing) finishEdit(true, false);
-      if (byId(cur.parentId).isRoot) return;
-      reparent(cur, rootNode(), true);
-      render();
-    }
-
-    function resetOffsets(all) {
+    function resetOffsets() {
       nodes.forEach(n => { n.dx = 0; n.dy = 0; });
       saveState();
       render();
@@ -665,10 +730,8 @@
       render();
     }
 
-    // ---------- 마우스 조작 ----------
-    let drag = null;
-    let pan = null;
-
+    // 마우스 & 터치 인터랙션
+    let drag = null, pan = null;
     function onNodeMouseDown(e) {
       if (e.button !== 0) return;
       e.stopPropagation();
@@ -682,8 +745,7 @@
     }
 
     viewport.addEventListener('mousedown', (e) => {
-      if (e.button !== 0) return;
-      if (e.target.closest && e.target.closest('.node')) return;
+      if (e.button !== 0 || (e.target.closest && e.target.closest('.node'))) return;
       if (isEditing) finishEdit(true, false);
       pan = { sx: e.clientX, sy: e.clientY, px: panX, py: panY };
       viewport.classList.add('panning');
@@ -715,7 +777,6 @@
         const under = document.elementFromPoint(e.clientX, e.clientY);
         const overEl = under && under.closest ? under.closest('.node') : null;
         let overId = overEl ? +overEl.dataset.id : null;
-
         if (overId !== null) {
           const t = byId(overId);
           if (!t || t.id === n.id || t.id === n.parentId || isDescendant(t, n.id)) overId = null;
@@ -729,7 +790,7 @@
       }
     });
 
-    window.addEventListener('mouseup', (e) => {
+    window.addEventListener('mouseup', () => {
       if (pan) { pan = null; viewport.classList.remove('panning'); return; }
       if (drag) {
         const n = byId(drag.id);
@@ -753,19 +814,17 @@
     viewport.addEventListener('wheel', (e) => {
       e.preventDefault();
       if (e.ctrlKey) {
-        zoomAt(e.deltaY < 0 ? 1.1 : 1 / 1.1, e.clientX, e.clientY);
+        const nz = Math.min(2.5, Math.max(0.3, zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1)));
+        const wx = (e.clientX - panX) / zoom, wy = (e.clientY - panY) / zoom;
+        zoom = nz; panX = e.clientX - wx * zoom; panY = e.clientY - wy * zoom;
+        world.classList.add('notrans'); updateTransform();
       } else {
-        world.classList.add('notrans');
-        panX -= e.deltaX; panY -= e.deltaY;
-        updateTransform();
+        world.classList.add('notrans'); panX -= e.deltaX; panY -= e.deltaY; updateTransform();
       }
     }, { passive: false });
 
-    // ---------- 모바일 터치 제스처 (Pan & Pinch Zoom 지원) ----------
-    let touchPan = null;
-    let initialPinchDist = null;
-    let initialZoom = 1.0;
-
+    // 모바일 터치 제스처
+    let touchPan = null, initialPinchDist = null, initialZoom = 1.0;
     viewport.addEventListener('touchstart', (e) => {
       if (e.touches.length === 1) {
         const t = e.touches[0];
@@ -773,11 +832,7 @@
         world.classList.add('notrans');
       } else if (e.touches.length === 2) {
         touchPan = null;
-        const dist = Math.hypot(
-          e.touches[0].clientX - e.touches[1].clientX,
-          e.touches[0].clientY - e.touches[1].clientY
-        );
-        initialPinchDist = dist;
+        initialPinchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
         initialZoom = zoom;
       }
     }, { passive: true });
@@ -789,12 +844,8 @@
         panY = touchPan.py + (t.clientY - touchPan.sy);
         updateTransform();
       } else if (e.touches.length === 2 && initialPinchDist) {
-        const dist = Math.hypot(
-          e.touches[0].clientX - e.touches[1].clientX,
-          e.touches[0].clientY - e.touches[1].clientY
-        );
-        const factor = dist / initialPinchDist;
-        zoom = Math.min(2.5, Math.max(0.3, initialZoom * factor));
+        const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+        zoom = Math.min(2.5, Math.max(0.3, initialZoom * (dist / initialPinchDist)));
         updateTransform();
       }
     }, { passive: true });
@@ -804,14 +855,13 @@
       if (e.touches.length === 0) touchPan = null;
     });
 
-    // ---------- 키보드 이벤트 (PC 단축키) ----------
+    // 키보드 단축키
     window.addEventListener('keydown', (e) => {
       if (e.key === 'F6') { e.preventDefault(); goRoot(); return; }
       if (isEditing) return;
       const k = e.key;
       if (e.ctrlKey && !e.shiftKey && (k === 'z' || k === 'Z')) { e.preventDefault(); undo(); return; }
       if ((e.ctrlKey && (k === 'y' || k === 'Y')) || (e.ctrlKey && e.shiftKey && (k === 'z' || k === 'Z'))) { e.preventDefault(); redo(); return; }
-      if (e.ctrlKey && (k === 'm' || k === 'M')) { e.preventDefault(); moveToRoot(); return; }
       if (e.ctrlKey || e.altKey || e.metaKey) return;
 
       if (k === 'Escape' || k === 'Home' || k === '1') { e.preventDefault(); goRoot(); return; }
@@ -819,13 +869,10 @@
       if (k === 'Enter') { e.preventDefault(); addSibling(); return; }
       if (k === 'F2') { e.preventDefault(); startEdit(); return; }
       if (k === 'Delete' || k === 'Backspace') { e.preventDefault(); deleteNode(); return; }
-      if (k === 'a' || k === 'A') { e.preventDefault(); resetOffsets(true); return; }
-      if (k === '+' || k === '=') { e.preventDefault(); setZoom(zoom * 1.2); return; }
-      if (k === '-' || k === '_') { e.preventDefault(); setZoom(zoom / 1.2); return; }
-      if (k === '0') { e.preventDefault(); setZoom(1); return; }
+      if (k === 'a' || k === 'A') { e.preventDefault(); resetOffsets(); return; }
     }, true);
 
-    // ---------- 툴바 클릭 이벤트 (PC 마우스 & 모바일 터치) ----------
+    // 툴바 액션
     document.getElementById('toolbar').addEventListener('click', (e) => {
       const item = e.target.closest('.item');
       if (!item) return;
@@ -838,110 +885,44 @@
       else if (a === 'undo') undo();
       else if (a === 'redo') redo();
       else if (a === 'root') goRoot();
-      else if (a === 'toRoot') moveToRoot();
-      else if (a === 'resetAll') resetOffsets(true);
-      else if (a === 'zoomIn') setZoom(zoom * 1.2);
-      else if (a === 'zoomOut') setZoom(zoom / 1.2);
-      else if (a === 'zoomReset') setZoom(1);
+      else if (a === 'resetAll') resetOffsets();
     });
 
-    // ---------- 목록 팝업 열기/닫기/조회 & 삭제 ----------
+    // 모달 목록 관리
     const modalOverlay = document.getElementById('modal-overlay');
     const mapListContainer = document.getElementById('map-list');
-
     function openModal() {
       modalOverlay.style.display = 'flex';
-      loadMapList();
-    }
-
-    function loadMapList() {
-      mapListContainer.innerHTML = '<div style="text-align:center; color:#94a3b8; font-size:13px; padding:20px;">목록을 불러오는 중...</div>';
-      
+      mapListContainer.innerHTML = '<div style="text-align:center; color:#94a3b8; padding:20px;">불러오는 중...</div>';
       db.ref('mindmaps').once('value').then(snapshot => {
         const data = snapshot.val();
         mapListContainer.innerHTML = '';
-        if (!data || Object.keys(data).length === 0) {
-          mapListContainer.innerHTML = '<div style="text-align:center; color:#94a3b8; font-size:13px; padding:20px;">저장된 마인드맵이 없습니다.</div>';
-          return;
-        }
-
+        if (!data) return;
         Object.keys(data).forEach(key => {
-          const mapData = data[key];
           const item = document.createElement('div');
           item.className = 'map-item' + (key === currentRoomId ? ' current' : '');
-          
-          const titleText = mapData.title || (mapData.nodes && mapData.nodes[0] ? mapData.nodes[0].text : '중심 주제');
-          
-          item.innerHTML = `
-            <div class="map-info">
-              <span class="map-title">${titleText}</span>
-              <span class="map-id">#${key}</span>
-            </div>
-            <button class="btn-delete-map" title="이 마인드맵 삭제">🗑️ 삭제</button>
-          `;
-          
-          item.addEventListener('click', (e) => {
-            if (e.target.closest('.btn-delete-map')) return;
-            window.location.hash = key;
-            closeModal();
-          });
-
-          const deleteBtn = item.querySelector('.btn-delete-map');
-          deleteBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (confirm(`'${titleText}' 마인드맵을 완전히 삭제하시겠습니까?`)) {
-              deleteMap(key, Object.keys(data));
-            }
-          });
-
+          const title = data[key].title || '중심 주제';
+          item.innerHTML = `<span>${title}</span><span style="color:#94a3b8; font-size:11px; font-family:monospace;">#${key}</span>`;
+          item.addEventListener('click', () => { window.location.hash = key; closeModal(); });
           mapListContainer.appendChild(item);
         });
-      }).catch(err => {
-        mapListContainer.innerHTML = '<div style="text-align:center; color:#ef4444; font-size:13px; padding:20px;">불러오기 실패: ' + err.message + '</div>';
       });
     }
-
-    function deleteMap(targetKey, allKeys) {
-      db.ref('mindmaps/' + targetKey).remove().then(() => {
-        if (targetKey === currentRoomId) {
-          const remaining = allKeys.filter(k => k !== targetKey);
-          if (remaining.length > 0) {
-            window.location.hash = remaining[0];
-          } else {
-            createNewMap();
-          }
-        }
-        loadMapList();
-      }).catch(err => {
-        alert('삭제 실패: ' + err.message);
-      });
-    }
-
-    function closeModal() {
-      modalOverlay.style.display = 'none';
-    }
-
+    function closeModal() { modalOverlay.style.display = 'none'; }
     document.getElementById('btn-list').addEventListener('click', openModal);
     document.getElementById('modal-close').addEventListener('click', closeModal);
-    modalOverlay.addEventListener('click', (e) => {
-      if (e.target === modalOverlay) closeModal();
-    });
-
-    function createNewMap() {
-      const newRoom = 'map-' + Math.random().toString(36).substring(2, 8);
-      window.location.hash = newRoom;
-      closeModal();
-    }
-    document.getElementById('btn-new-map').addEventListener('click', createNewMap);
-    document.getElementById('btn-modal-new').addEventListener('click', createNewMap);
+    modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(); });
 
     document.getElementById('btn-copy-link').addEventListener('click', () => {
       navigator.clipboard.writeText(window.location.href).then(() => {
-        alert('현재 마인드맵 주소가 복사되었습니다!\n다른 기기에 공유하세요.');
+        alert('현재 마인드맵 주소가 복사되었습니다!\n다른 기기에서 붙여넣어 함께 작업하세요.');
       });
     });
 
     window.addEventListener('resize', () => { centerOnNode(byId(selectedNodeId), false); });
+
+    // 초기 라우팅 실행
+    checkRoute();
   </script>
 </body>
 </html>
