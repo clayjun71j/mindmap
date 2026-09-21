@@ -105,6 +105,13 @@
       cursor: pointer; user-select: none; text-align: center; min-width: 60px;
       transition: background-color 0.15s, box-shadow 0.15s, border-color 0.15s, transform 0.15s;
     }
+    .node a {
+      color: #0284c7; text-decoration: underline; text-underline-offset: 3px;
+      cursor: pointer; pointer-events: auto;
+    }
+    .node a:hover {
+      color: #0369a1; text-decoration: underline;
+    }
     .node.root { 
       font-weight: 700; font-size: 16px; padding: 10px 22px; 
       color: #0369a1; background: #e0f2fe; border-color: #38bdf8;
@@ -459,6 +466,16 @@
       pushToCloud();
     }
 
+    // 텍스트 속 URL을 하이퍼링크 HTML로 자동 치환하는 함수
+    function formatNodeText(str) {
+      if (!str) return '';
+      const urlPattern = /(https?:\/\/[^\s]+)/g;
+      const escaped = str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return escaped.replace(urlPattern, (url) => {
+        return `<a href="${url}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();">${url}</a>`;
+      });
+    }
+
     // ---------- 좌우 양방향 레이아웃 엔진 ----------
     function computeTreeHeight(n) {
       const ch = childrenOf(n.id);
@@ -591,7 +608,11 @@
         el.style.background = selected ? c.sel : c.bg;
         el.style.boxShadow = selected ? ('0 0 0 3px ' + c.ring) : 'none';
       }
-      if (!(isEditing && editingId === n.id)) el.textContent = n.text;
+      
+      // 편집 중이 아닐 때는 링크를 포함한 HTML로 렌더링
+      if (!(isEditing && editingId === n.id)) {
+        el.innerHTML = formatNodeText(n.text);
+      }
     }
 
     function render() {
@@ -705,7 +726,7 @@
       el.textContent = '';
       const input = document.createElement('input');
       input.className = 'node-input';
-      input.value = n.text;
+      input.value = n.text; // 편집 시 원래 텍스트(URL) 그대로 노출
       const fit = () => { input.style.width = Math.max(55, measureText(input.value, n.isRoot) + 16) + 'px'; render(); };
       input.addEventListener('input', fit);
       input.addEventListener('mousedown', e => e.stopPropagation());
@@ -791,7 +812,6 @@
       if (!node || !newParent || node.isRoot) return false;
       if (node.id === newParent.id || isDescendant(newParent, node.id)) return false;
       
-      // 편입 시 해당 노드 및 그 하위 자손들의 수동 오프셋 초기화
       const subtreeIds = [node.id, ...getAllDescendantIds(node.id)];
       nodes.forEach(n => {
         if (subtreeIds.includes(n.id)) {
@@ -808,7 +828,6 @@
       return true;
     }
 
-    // 부모 노드 이동 시 모든 하위 노드까지 함께 이동 (오프셋 동시 적용)
     function nudgeSubtree(rootNodeId, dx, dy) {
       const targetIds = [rootNodeId, ...getAllDescendantIds(rootNodeId)];
       nodes.forEach(n => {
@@ -857,7 +876,6 @@
       render();
     }
 
-    // 방향키 지능형 탐색
     function navigate(dir) {
       const cur = byId(selectedNodeId);
       if (!cur) return;
@@ -910,11 +928,14 @@
       if (target) selectNode(target.id, false);
     }
 
-    // ---------- 드래그 앤 드롭 (하위 노드 동시 드래그 로직) ----------
+    // ---------- 드래그 앤 드롭 ----------
     let drag = null, pan = null;
 
     function onNodeMouseDown(e) {
       if (e.button !== 0) return;
+      // 하이퍼링크 클릭 시 드래그 동작을 건너뜀
+      if (e.target.tagName.toLowerCase() === 'a') return;
+
       e.stopPropagation();
       const id = +this.dataset.id;
       if (isEditing && editingId !== id) finishEdit(true, false);
@@ -922,12 +943,11 @@
       selectNode(id, false);
       
       const n = byId(id);
-      if (n.isRoot) return; // 중심 주제는 드래그 이동 불가
+      if (n.isRoot) return;
 
       const descendantIds = getAllDescendantIds(id);
       const subtreeIds = [id, ...descendantIds];
       
-      // 초기 오프셋 맵 저장
       const originOffsets = {};
       subtreeIds.forEach(subId => {
         const subNode = byId(subId);
@@ -979,7 +999,6 @@
         const deltaX = mx / zoom;
         const deltaY = my / zoom;
 
-        // 부모와 모든 하위 자식 노드를 함께 동일한 변위로 이동
         drag.subtreeIds.forEach(subId => {
           const subNode = byId(subId);
           if (subNode && drag.originOffsets[subId]) {
@@ -989,12 +1008,10 @@
         });
         render();
 
-        // 편입 대상 노드 판별
         const under = document.elementFromPoint(e.clientX, e.clientY);
         const overEl = under && under.closest ? under.closest('.node') : null;
         let overId = overEl ? +overEl.dataset.id : null;
 
-        // 자신이나 자신의 하위 노드에는 편입 불가
         if (overId !== null && drag.subtreeIds.includes(overId)) {
           overId = null;
         }
@@ -1024,14 +1041,12 @@
           }
 
           if (drag.over !== null) {
-            // 다른 노드 위로 드롭 시 -> 하위 편입
             const targetParent = byId(drag.over);
             if (reparent(n, targetParent, false)) {
               saveState(drag.snap);
             }
             render();
           } else {
-            // 빈 공간으로 드롭 시 -> 하위 노드들과 함께 이동한 위치 영구 저장
             saveState(drag.snap);
             render();
           }
@@ -1101,7 +1116,6 @@
       if (k.startsWith('Arrow')) {
         e.preventDefault();
         if (e.shiftKey) {
-          // Shift + 방향키 시 선택된 주제와 그 하위 노드 전체 동시 이동
           const cur = byId(selectedNodeId);
           if (cur && !cur.isRoot) {
             if (k === 'ArrowLeft') nudgeSubtree(cur.id, -NUDGE, 0);
@@ -1116,10 +1130,10 @@
       }
       if (k === 'a' || k === 'A') { 
         e.preventDefault(); 
-        if (e.shiftKey) resetOffsets(); // 전체 정렬
+        if (e.shiftKey) resetOffsets();
         else {
           const cur = byId(selectedNodeId);
-          if (cur) resetOffsets(cur.id); // 선택한 가지 정렬
+          if (cur) resetOffsets(cur.id);
         }
         return; 
       }
