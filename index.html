@@ -102,13 +102,17 @@
       position: absolute; padding: 8px 16px; border-radius: 20px;
       border: 2px solid #94a3b8; background: #ffffff;
       font-size: 14px; color: #1e293b; white-space: nowrap;
-      cursor: pointer; user-select: none; text-align: center; min-width: 60px;
+      cursor: pointer; text-align: center; min-width: 60px;
       transition: background-color 0.15s, box-shadow 0.15s, border-color 0.15s, transform 0.15s;
       display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      user-select: none;
     }
     
-    /* 텍스트 클릭 시 이벤트 간섭 방지 */
-    .node span { pointer-events: none; }
+    /* 글자 span 영역도 포인터 이벤트를 통과시켜 더블클릭이 즉시 발생하도록 처리 */
+    .node-label {
+      pointer-events: none;
+      display: inline-block;
+    }
 
     /* 링크 뱃지 버튼 */
     .link-badge {
@@ -139,7 +143,7 @@
     .node-input {
       font-family: inherit; font-size: inherit; border: none; outline: none;
       text-align: center; background: transparent; min-width: 60px;
-      color: inherit; font-weight: inherit;
+      color: inherit; font-weight: inherit; user-select: text;
     }
     #measurer {
       position: absolute; visibility: hidden; white-space: pre; font-size: 14px;
@@ -500,9 +504,9 @@
       const parsed = parseNodeContent(str);
       const safeLabel = parsed.label.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       if (parsed.url) {
-        return `<span>${safeLabel}</span><a class="link-badge" href="${parsed.url}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();" title="${parsed.url}">🔗 링크</a>`;
+        return `<span class="node-label">${safeLabel}</span><a class="link-badge" href="${parsed.url}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();" title="${parsed.url}">🔗 링크</a>`;
       }
-      return `<span>${safeLabel}</span>`;
+      return `<span class="node-label">${safeLabel}</span>`;
     }
 
     // ---------- 좌우 양방향 레이아웃 엔진 ----------
@@ -597,7 +601,9 @@
       }
     }
 
-    let lastTapTime = 0;
+    let lastClickTime = 0;
+    let lastClickedNodeId = null;
+
     function createNodeEl(n) {
       const el = document.createElement('div');
       el.className = 'node';
@@ -605,7 +611,24 @@
       
       el.addEventListener('mousedown', onNodeMouseDown);
       
-      // 더블클릭 이벤트 (뱃지 제외 즉시 편집)
+      // 글자/노드 본체 클릭 시 자체 더블클릭 타이머 감지 (네이티브 dblclick 누락 완벽 방어)
+      el.addEventListener('click', (e) => {
+        if (e.target.closest && e.target.closest('.link-badge')) return;
+        const now = Date.now();
+        if (lastClickedNodeId === n.id && (now - lastClickTime < 350)) {
+          // 350ms 이내 재클릭 시 무조건 편집 실행
+          e.stopPropagation();
+          selectNode(n.id, false);
+          startEdit();
+          lastClickTime = 0;
+          lastClickedNodeId = null;
+        } else {
+          lastClickTime = now;
+          lastClickedNodeId = n.id;
+        }
+      });
+
+      // 네이티브 dblclick 추가 보장
       el.addEventListener('dblclick', (e) => { 
         if (e.target.closest && e.target.closest('.link-badge')) return;
         e.stopPropagation(); 
@@ -613,18 +636,21 @@
         startEdit();
       });
 
-      // 모바일 더블탭 이벤트
+      // 모바일 더블탭
+      let lastTouchTime = 0;
       el.addEventListener('touchstart', (e) => {
         if (e.target.closest && e.target.closest('.link-badge')) return;
         if (isEditing && editingId === n.id) return;
         const now = Date.now();
         selectNode(n.id, false);
-        if (now - lastTapTime < 300) {
+        if (now - lastTouchTime < 350) {
           e.preventDefault(); 
           e.stopPropagation(); 
           startEdit();
+          lastTouchTime = 0;
+        } else {
+          lastTouchTime = now;
         }
-        lastTapTime = now;
       }, { passive: false });
 
       canvas.appendChild(el);
@@ -1000,6 +1026,7 @@
         snap: snapshot(), 
         over: null 
       };
+      // 브라우저의 기본 텍스트 선택 및 드래그 방지
       e.preventDefault();
     }
 
