@@ -21,9 +21,7 @@
       background: #f8fafc; overflow-y: auto; touch-action: pan-y;
       display: flex; flex-direction: column; align-items: center; padding: 40px 20px;
     }
-    .home-header {
-      text-align: center; margin-bottom: 32px;
-    }
+    .home-header { text-align: center; margin-bottom: 32px; }
     .home-title {
       font-size: 28px; font-weight: 800; color: #0f172a; margin-bottom: 8px;
       display: flex; align-items: center; justify-content: center; gap: 10px;
@@ -48,9 +46,7 @@
     .home-list-container {
       width: 100%; max-width: 680px; display: flex; flex-direction: column; gap: 12px;
     }
-    .home-list-title {
-      font-size: 15px; font-weight: 700; color: #64748b; margin-bottom: 4px;
-    }
+    .home-list-title { font-size: 15px; font-weight: 700; color: #64748b; margin-bottom: 4px; }
     .home-map-card {
       background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px;
       padding: 16px 20px; display: flex; justify-content: space-between; align-items: center;
@@ -74,9 +70,7 @@
       box-shadow: 0 4px 12px rgba(0,0,0,0.08);
       display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 8px 12px;
       font-size: 13px; color: #475569; user-select: none;
-      max-width: calc(100vw - 20px);
-      align-items: center;
-      scrollbar-width: none;
+      max-width: calc(100vw - 20px); align-items: center; scrollbar-width: none;
     }
     #toolbar::-webkit-scrollbar { display: none; }
     #toolbar .item { cursor: pointer; white-space: nowrap; padding: 3px 6px; border-radius: 4px; }
@@ -92,12 +86,10 @@
     #viewport { position: absolute; inset: 0; overflow: hidden; cursor: grab; }
     #viewport.panning { cursor: grabbing; }
     
-    /* 캔버스 래퍼: 초기 튕김 현상 방지용 opacity */
     #world {
       position: absolute; left: 0; top: 0; transform-origin: 0 0;
       transition: transform 0.22s ease-out, opacity 0.15s ease-out;
-      will-change: transform, opacity;
-      opacity: 0; /* 처음 로딩 시 투명 처리하여 좌상단 튀는 잔상 차단 */
+      will-change: transform, opacity; opacity: 0;
     }
     #world.ready { opacity: 1; }
     #world.notrans { transition: none; }
@@ -119,15 +111,12 @@
     }
     .node.root.selected {
       box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.45), 0 8px 20px rgba(0,0,0,0.1) !important;
-      border-color: #0284c7 !important;
-      transform: scale(1.05);
+      border-color: #0284c7 !important; transform: scale(1.05);
     }
     .node.dragging { opacity: 0.75; pointer-events: none !important; z-index: 100 !important; }
     .node.drag-over { 
-      border-style: dashed !important; 
-      border-color: #0284c7 !important; 
-      box-shadow: 0 0 0 4px rgba(2,132,199,0.3) !important;
-      transform: scale(1.04);
+      border-style: dashed !important; border-color: #0284c7 !important; 
+      box-shadow: 0 0 0 4px rgba(2,132,199,0.3) !important; transform: scale(1.04);
     }
     .node-input {
       font-family: inherit; font-size: inherit; border: none; outline: none;
@@ -139,7 +128,6 @@
       font-family: inherit; top: -9999px; left: -9999px;
     }
 
-    /* 팝업 모달 */
     #modal-overlay {
       position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 2000;
       display: none; justify-content: center; align-items: center;
@@ -214,7 +202,6 @@
 
   <span id="measurer"></span>
 
-  <!-- 모달 목록 -->
   <div id="modal-overlay">
     <div id="modal">
       <div id="modal-header">
@@ -227,7 +214,6 @@
   </div>
 
   <script>
-    // ---------- Firebase 설정 ----------
     const firebaseConfig = {
       apiKey: "AIzaSyA2nPDilvlr0kxGRZQz6eRmnEKS7KsMn7M",
       authDomain: "mindmap-app-f3284.firebaseapp.com",
@@ -257,7 +243,7 @@
         if (currentRoomId !== hash) {
           currentRoomId = hash;
           isFirstLoadForRoom = true;
-          world.classList.remove('ready'); // 방 전환 시 먼저 투명 처리
+          world.classList.remove('ready');
           if (mapRef) mapRef.off();
           mapRef = db.ref('mindmaps/' + currentRoomId);
           bindRealtimeSync();
@@ -269,7 +255,6 @@
 
     function loadHomeList() {
       homeCardsList.innerHTML = '<div style="text-align:center; color:#94a3b8; padding:30px;">목록을 불러오는 중...</div>';
-      
       db.ref('mindmaps').once('value', (snapshot) => {
         const data = snapshot.val();
         homeCardsList.innerHTML = '';
@@ -304,13 +289,10 @@
             if (confirm(`'${title}' (#${key}) 마인드맵을 완전히 삭제하시겠습니까?`)) {
               delBtn.textContent = '삭제 중...';
               delBtn.disabled = true;
-              
               db.ref('mindmaps/' + key).remove()
-                .then(() => {
-                  loadHomeList();
-                })
+                .then(() => loadHomeList())
                 .catch((err) => {
-                  alert('삭제 실패: ' + err.message + '\nFirebase Realtime Database의 규칙(Rules)을 확인해주세요.');
+                  alert('삭제 실패: ' + err.message);
                   delBtn.textContent = '🗑️ 삭제';
                   delBtn.disabled = false;
                 });
@@ -320,7 +302,7 @@
           homeCardsList.appendChild(card);
         });
       }, (err) => {
-        homeCardsList.innerHTML = `<div style="text-align:center; color:#ef4444; padding:30px;">불러오기 실패: ${err.message}<br>Firebase 권한(규칙)을 확인하세요.</div>`;
+        homeCardsList.innerHTML = `<div style="text-align:center; color:#ef4444; padding:30px;">불러오기 실패: ${err.message}</div>`;
       });
     }
 
@@ -332,10 +314,7 @@
     document.getElementById('btn-home-create').addEventListener('click', createNewMindmap);
     document.getElementById('btn-new-map').addEventListener('click', createNewMindmap);
     document.getElementById('btn-modal-new').addEventListener('click', createNewMindmap);
-
-    document.getElementById('btn-go-home').addEventListener('click', () => {
-      window.location.hash = '';
-    });
+    document.getElementById('btn-go-home').addEventListener('click', () => { window.location.hash = ''; });
 
     // ---------- 마인드맵 코어 ----------
     const H_GAP = 40;
@@ -406,12 +385,8 @@
           
           if (isFirstLoadForRoom) {
             isFirstLoadForRoom = false;
-            // 애니메이션 끈 상태로 정중앙 즉시 배치
             centerOnNode(rootNode(), false);
-            // 정렬된 뒤 화면 표시 (튕김 현상 100% 제거)
-            requestAnimationFrame(() => {
-              world.classList.add('ready');
-            });
+            requestAnimationFrame(() => { world.classList.add('ready'); });
           }
           isRemoteUpdating = false;
         } else {
@@ -420,9 +395,7 @@
           selectedNodeId = 1;
           render();
           centerOnNode(rootNode(), false);
-          requestAnimationFrame(() => {
-            world.classList.add('ready');
-          });
+          requestAnimationFrame(() => { world.classList.add('ready'); });
           pushToCloud();
         }
       });
@@ -471,6 +444,7 @@
       pushToCloud();
     }
 
+    // ---------- 좌우 양방향 레이아웃 엔진 (우3, 좌3 분배) ----------
     function computeTreeHeight(n) {
       const ch = childrenOf(n.id);
       const myH = n.h || 38;
@@ -482,7 +456,9 @@
       return n._sh;
     }
 
-    function layoutTree(n, x, topY) {
+    // 하위 서브트리 배치 (dir: 'right' | 'left')
+    function layoutSubtreeBranch(n, x, topY, dir) {
+      n._dir = dir;
       n.ax = x;
       n.ay = topY + (n._sh - n.h) / 2;
       n.x = n.ax + (n.dx || 0);
@@ -496,11 +472,72 @@
       childTotalH += V_GAP * (ch.length - 1);
 
       let curTop = (n.ay + n.h / 2) - childTotalH / 2;
-      const nextX = n.ax + n.w + H_GAP;
+      const nextX = dir === 'right' ? (n.ax + n.w + H_GAP) : (n.ax - H_GAP);
 
       for (let i = 0; i < ch.length; i++) {
-        layoutTree(ch[i], nextX, curTop);
+        // 왼쪽 방향일 경우 자식 노드의 폭만큼 왼쪽으로 밀어 배치
+        const targetX = dir === 'right' ? nextX : (nextX - (ch[i].w || 60));
+        layoutSubtreeBranch(ch[i], targetX, curTop, dir);
         curTop += ch[i]._sh + V_GAP;
+      }
+    }
+
+    function layoutAllTrees() {
+      const r = rootNode();
+      if (!r) return;
+
+      r._dir = 'root';
+      r.ax = 0;
+      r.ay = 0;
+      r.x = r.ax + (r.dx || 0);
+      r.y = r.ay + (r.dy || 0);
+
+      const rootChildren = childrenOf(r.id);
+      if (!rootChildren.length) return;
+
+      // 3개씩 오른쪽, 왼쪽 분배: 0,1,2: 우 / 3,4,5: 좌 / 6,7,8: 우 ...
+      const rightBranches = [];
+      const leftBranches = [];
+
+      rootChildren.forEach((child, idx) => {
+        computeTreeHeight(child);
+        const group = Math.floor(idx / 3);
+        if (group % 2 === 0) {
+          rightBranches.push(child);
+        } else {
+          leftBranches.push(child);
+        }
+      });
+
+      // 1. 오른쪽 가지 배치
+      if (rightBranches.length > 0) {
+        let rightTotalH = 0;
+        rightBranches.forEach(c => { rightTotalH += c._sh; });
+        rightTotalH += V_GAP * (rightBranches.length - 1);
+
+        let curTop = (r.ay + r.h / 2) - rightTotalH / 2;
+        const rightStartX = r.ax + r.w + H_GAP;
+
+        rightBranches.forEach(c => {
+          layoutSubtreeBranch(c, rightStartX, curTop, 'right');
+          curTop += c._sh + V_GAP;
+        });
+      }
+
+      // 2. 왼쪽 가지 배치
+      if (leftBranches.length > 0) {
+        let leftTotalH = 0;
+        leftBranches.forEach(c => { leftTotalH += c._sh; });
+        leftTotalH += V_GAP * (leftBranches.length - 1);
+
+        let curTop = (r.ay + r.h / 2) - leftTotalH / 2;
+        const leftStartX = r.ax - H_GAP;
+
+        leftBranches.forEach(c => {
+          const targetX = leftStartX - (c.w || 60);
+          layoutSubtreeBranch(c, targetX, curTop, 'left');
+          curTop += c._sh + V_GAP;
+        });
       }
     }
 
@@ -562,11 +599,7 @@
         n.h = Math.max(els[n.id].offsetHeight, 36);
       });
 
-      const root = rootNode();
-      if (root) {
-        computeTreeHeight(root);
-        layoutTree(root, 0, 0);
-      }
+      layoutAllTrees();
 
       nodes.forEach(n => {
         if (els[n.id]) {
@@ -577,16 +610,33 @@
       drawLines();
     }
 
+    // 양방향 베지어 곡선 연결
     function drawLines() {
       let s = '';
       nodes.forEach(n => {
         if (n.parentId === null) return;
         const p = byId(n.parentId);
         if (!p) return;
-        const x1 = p.x + p.w, y1 = p.y + p.h / 2;
-        const x2 = n.x, y2 = n.y + n.h / 2;
-        const mx = (x1 + x2) / 2;
+
+        let x1, y1, x2, y2, mx;
         const c = colorOf(n);
+
+        if (n._dir === 'left') {
+          // 왼쪽 가지: 부모의 왼쪽 끝 -> 자식의 오른쪽 끝
+          x1 = p.isRoot ? p.x : p.x;
+          y1 = p.y + p.h / 2;
+          x2 = n.x + n.w;
+          y2 = n.y + n.h / 2;
+          mx = (x1 + x2) / 2;
+        } else {
+          // 오른쪽 가지: 부모의 오른쪽 끝 -> 자식의 왼쪽 끝
+          x1 = p.x + p.w;
+          y1 = p.y + p.h / 2;
+          x2 = n.x;
+          y2 = n.y + n.h / 2;
+          mx = (x1 + x2) / 2;
+        }
+
         s += '<path d="M' + x1 + ' ' + y1 + ' C' + mx + ' ' + y1 + ', ' + mx + ' ' + y2 + ', ' + x2 + ' ' + y2 +
              '" fill="none" stroke="' + c.bd + '" stroke-width="2" stroke-linecap="round"/>';
       });
@@ -597,7 +647,7 @@
       world.style.transform = 'translate(' + panX + 'px,' + panY + 'px) scale(' + zoom + ')';
     }
 
-    // 중앙 정렬 로직 (화면 중심에 맞추기)
+    // 화면 중앙 정렬
     function centerOnNode(n, animate) {
       if (!n) return;
       if (animate === false) {
@@ -609,12 +659,8 @@
       const vw = viewport.clientWidth || window.innerWidth;
       const vh = viewport.clientHeight || window.innerHeight;
       
-      // 중심 주제 노드일 때 오른쪽 가지 공간을 감안하여 화면의 35% 지점에 안정적 배치
-      if (n.isRoot) {
-        panX = (vw * 0.35) - (n.x + n.w / 2) * zoom;
-      } else {
-        panX = (vw / 2) - (n.x + n.w / 2) * zoom;
-      }
+      // 양방향으로 뻗으므로 중심 주제는 정확한 화면 정가운데(50%)에 배치
+      panX = (vw / 2) - (n.x + n.w / 2) * zoom;
       panY = (vh / 2) - (n.y + n.h / 2) * zoom;
       updateTransform();
     }
@@ -785,38 +831,63 @@
       render();
     }
 
+    // ---------- 방향키 탐색 (좌우 가지 방향 지능형 지원) ----------
     function navigate(dir) {
       const cur = byId(selectedNodeId);
       if (!cur) return;
       let target = null;
-      if (dir === 'ArrowLeft') {
-        if (cur.parentId !== null) target = byId(cur.parentId);
-      } else if (dir === 'ArrowRight') {
+
+      if (cur.isRoot) {
+        // 중심 주제에서 이동할 때
         const ch = childrenOf(cur.id);
-        if (ch.length) target = ch[Math.floor((ch.length - 1) / 2)];
-      } else {
-        const up = (dir === 'ArrowUp');
-        if (cur.parentId !== null) {
-          const sib = childrenOf(cur.parentId);
-          const i = sib.indexOf(cur);
-          if (up && i > 0) target = sib[i - 1];
-          if (!up && i < sib.length - 1) target = sib[i + 1];
+        if (dir === 'ArrowRight') {
+          target = ch.find(c => c._dir === 'right');
+        } else if (dir === 'ArrowLeft') {
+          target = ch.find(c => c._dir === 'left');
         }
-        if (!target) {
-          const d = depthOf(cur);
-          const cy = cur.y + cur.h / 2;
-          let best = null, bestDist = Infinity;
-          nodes.forEach(n => {
-            if (n.id === cur.id || depthOf(n) !== d) return;
-            const ny = n.y + n.h / 2;
-            if ((up && ny < cy) || (!up && ny > cy)) {
-              const dist = Math.abs(ny - cy) + Math.abs(n.x - cur.x) * 0.3;
-              if (dist < bestDist) { bestDist = dist; best = n; }
-            }
-          });
-          target = best;
+      } else {
+        const isLeft = (cur._dir === 'left');
+        
+        // 왼쪽 가지일 때는 화살표의 좌우 기능이 반전됨 (←가 하위로 확장, →가 부모로 수렴)
+        if (dir === 'ArrowLeft') {
+          if (isLeft) {
+            const ch = childrenOf(cur.id);
+            if (ch.length) target = ch[Math.floor((ch.length - 1) / 2)];
+          } else {
+            target = byId(cur.parentId);
+          }
+        } else if (dir === 'ArrowRight') {
+          if (isLeft) {
+            target = byId(cur.parentId);
+          } else {
+            const ch = childrenOf(cur.id);
+            if (ch.length) target = ch[Math.floor((ch.length - 1) / 2)];
+          }
+        } else {
+          // 상하 이동
+          const up = (dir === 'ArrowUp');
+          if (cur.parentId !== null) {
+            const sib = childrenOf(cur.parentId).filter(c => c._dir === cur._dir);
+            const i = sib.indexOf(cur);
+            if (up && i > 0) target = sib[i - 1];
+            if (!up && i < sib.length - 1) target = sib[i + 1];
+          }
+          if (!target) {
+            const cy = cur.y + cur.h / 2;
+            let best = null, bestDist = Infinity;
+            nodes.forEach(n => {
+              if (n.id === cur.id || n.isRoot || n._dir !== cur._dir) return;
+              const ny = n.y + n.h / 2;
+              if ((up && ny < cy) || (!up && ny > cy)) {
+                const dist = Math.abs(ny - cy) + Math.abs(n.x - cur.x) * 0.3;
+                if (dist < bestDist) { bestDist = dist; best = n; }
+              }
+            });
+            target = best;
+          }
         }
       }
+
       if (target) selectNode(target.id, false);
     }
 
@@ -912,7 +983,7 @@
       }
     }, { passive: false });
 
-    // 모바일 터치 제스처
+    // 모바일 터치
     let touchPan = null, initialPinchDist = null, initialZoom = 1.0;
     viewport.addEventListener('touchstart', (e) => {
       if (e.touches.length === 1) {
