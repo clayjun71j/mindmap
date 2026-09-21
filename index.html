@@ -91,11 +91,17 @@
     }
     #viewport { position: absolute; inset: 0; overflow: hidden; cursor: grab; }
     #viewport.panning { cursor: grabbing; }
+    
+    /* 캔버스 래퍼: 초기 튕김 현상 방지용 opacity */
     #world {
       position: absolute; left: 0; top: 0; transform-origin: 0 0;
-      transition: transform 0.22s ease-out; will-change: transform;
+      transition: transform 0.22s ease-out, opacity 0.15s ease-out;
+      will-change: transform, opacity;
+      opacity: 0; /* 처음 로딩 시 투명 처리하여 좌상단 튀는 잔상 차단 */
     }
+    #world.ready { opacity: 1; }
     #world.notrans { transition: none; }
+    
     #svg-lines {
       position: absolute; left: 0; top: 0; width: 1px; height: 1px;
       overflow: visible; pointer-events: none;
@@ -251,6 +257,7 @@
         if (currentRoomId !== hash) {
           currentRoomId = hash;
           isFirstLoadForRoom = true;
+          world.classList.remove('ready'); // 방 전환 시 먼저 투명 처리
           if (mapRef) mapRef.off();
           mapRef = db.ref('mindmaps/' + currentRoomId);
           bindRealtimeSync();
@@ -260,7 +267,6 @@
 
     window.addEventListener('hashchange', checkRoute);
 
-    // 홈 화면 목록 불러오기
     function loadHomeList() {
       homeCardsList.innerHTML = '<div style="text-align:center; color:#94a3b8; padding:30px;">목록을 불러오는 중...</div>';
       
@@ -397,10 +403,15 @@
           nextId = data.nextId || 2;
           if (!byId(selectedNodeId)) selectedNodeId = rootNode().id;
           render();
+          
           if (isFirstLoadForRoom) {
             isFirstLoadForRoom = false;
-            // 뷰포트 크기가 계산된 직후 중앙으로 확실하게 위치 고정
-            setTimeout(() => { centerOnNode(rootNode(), false); }, 50);
+            // 애니메이션 끈 상태로 정중앙 즉시 배치
+            centerOnNode(rootNode(), false);
+            // 정렬된 뒤 화면 표시 (튕김 현상 100% 제거)
+            requestAnimationFrame(() => {
+              world.classList.add('ready');
+            });
           }
           isRemoteUpdating = false;
         } else {
@@ -408,7 +419,10 @@
           nextId = 2;
           selectedNodeId = 1;
           render();
-          setTimeout(() => { centerOnNode(rootNode(), false); }, 50);
+          centerOnNode(rootNode(), false);
+          requestAnimationFrame(() => {
+            world.classList.add('ready');
+          });
           pushToCloud();
         }
       });
@@ -583,16 +597,21 @@
       world.style.transform = 'translate(' + panX + 'px,' + panY + 'px) scale(' + zoom + ')';
     }
 
-    // 화면 중앙 정렬 (오른쪽 가지들의 공간을 감안하여 화면 중심선보다 살짝 왼쪽으로 균형 배치)
+    // 중앙 정렬 로직 (화면 중심에 맞추기)
     function centerOnNode(n, animate) {
       if (!n) return;
-      world.classList.toggle('notrans', animate === false);
+      if (animate === false) {
+        world.classList.add('notrans');
+      } else {
+        world.classList.remove('notrans');
+      }
+      
       const vw = viewport.clientWidth || window.innerWidth;
       const vh = viewport.clientHeight || window.innerHeight;
       
-      // 중심 주제 노드일 경우 오른쪽으로 뻗은 가지들을 고려해 가로 30% 지점에 배치
+      // 중심 주제 노드일 때 오른쪽 가지 공간을 감안하여 화면의 35% 지점에 안정적 배치
       if (n.isRoot) {
-        panX = (vw * 0.3) - (n.x + n.w / 2) * zoom;
+        panX = (vw * 0.35) - (n.x + n.w / 2) * zoom;
       } else {
         panX = (vw / 2) - (n.x + n.w / 2) * zoom;
       }
@@ -925,7 +944,7 @@
       if (e.touches.length === 0) touchPan = null;
     });
 
-    // 키보드 단축키
+    // 키보드 이벤트
     window.addEventListener('keydown', (e) => {
       if (e.key === 'F6') { e.preventDefault(); goRoot(); return; }
       if (isEditing) return;
