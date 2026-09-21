@@ -262,7 +262,6 @@
     function loadHomeList() {
       homeCardsList.innerHTML = '<div style="text-align:center; color:#94a3b8; padding:30px;">목록을 불러오는 중...</div>';
       
-      // 실시간 리스너로 연결하여 삭제 시 즉시 갱신
       db.ref('mindmaps').once('value', (snapshot) => {
         const data = snapshot.val();
         homeCardsList.innerHTML = '';
@@ -285,13 +284,11 @@
             <button class="card-del-btn" type="button">🗑️ 삭제</button>
           `;
 
-          // 카드 클릭 시 이동
           card.addEventListener('click', (e) => {
             if (e.target.closest('.card-del-btn')) return;
             window.location.hash = key;
           });
 
-          // 삭제 버튼 클릭 시 처리
           const delBtn = card.querySelector('.card-del-btn');
           delBtn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -302,7 +299,6 @@
               
               db.ref('mindmaps/' + key).remove()
                 .then(() => {
-                  alert('성공적으로 삭제되었습니다.');
                   loadHomeList();
                 })
                 .catch((err) => {
@@ -715,6 +711,14 @@
       return true;
     }
 
+    function nudge(dx, dy) {
+      const cur = byId(selectedNodeId);
+      if (!cur || cur.isRoot) return;
+      cur.dx = (cur.dx || 0) + dx; cur.dy = (cur.dy || 0) + dy;
+      saveState();
+      render();
+    }
+
     function resetOffsets() {
       nodes.forEach(n => { n.dx = 0; n.dy = 0; });
       saveState();
@@ -744,6 +748,43 @@
       render();
     }
 
+    // ---------- 방향키 탐색 로직 (정상 복구) ----------
+    function navigate(dir) {
+      const cur = byId(selectedNodeId);
+      if (!cur) return;
+      let target = null;
+      if (dir === 'ArrowLeft') {
+        if (cur.parentId !== null) target = byId(cur.parentId);
+      } else if (dir === 'ArrowRight') {
+        const ch = childrenOf(cur.id);
+        if (ch.length) target = ch[Math.floor((ch.length - 1) / 2)];
+      } else {
+        const up = (dir === 'ArrowUp');
+        if (cur.parentId !== null) {
+          const sib = childrenOf(cur.parentId);
+          const i = sib.indexOf(cur);
+          if (up && i > 0) target = sib[i - 1];
+          if (!up && i < sib.length - 1) target = sib[i + 1];
+        }
+        if (!target) {
+          const d = depthOf(cur);
+          const cy = cur.y + cur.h / 2;
+          let best = null, bestDist = Infinity;
+          nodes.forEach(n => {
+            if (n.id === cur.id || depthOf(n) !== d) return;
+            const ny = n.y + n.h / 2;
+            if ((up && ny < cy) || (!up && ny > cy)) {
+              const dist = Math.abs(ny - cy) + Math.abs(n.x - cur.x) * 0.3;
+              if (dist < bestDist) { bestDist = dist; best = n; }
+            }
+          });
+          target = best;
+        }
+      }
+      if (target) selectNode(target.id, false);
+    }
+
+    // 마우스 드래그 & 이동
     let drag = null, pan = null;
     function onNodeMouseDown(e) {
       if (e.button !== 0) return;
@@ -868,7 +909,7 @@
       if (e.touches.length === 0) touchPan = null;
     });
 
-    // 키보드 단축키
+    // ---------- 키보드 이벤트 리스너 (방향키 연동 완료) ----------
     window.addEventListener('keydown', (e) => {
       if (e.key === 'F6') { e.preventDefault(); goRoot(); return; }
       if (isEditing) return;
@@ -882,6 +923,18 @@
       if (k === 'Enter') { e.preventDefault(); addSibling(); return; }
       if (k === 'F2') { e.preventDefault(); startEdit(); return; }
       if (k === 'Delete' || k === 'Backspace') { e.preventDefault(); deleteNode(); return; }
+      if (k.startsWith('Arrow')) {
+        e.preventDefault();
+        if (e.shiftKey) {
+          if (k === 'ArrowLeft') nudge(-NUDGE, 0);
+          else if (k === 'ArrowRight') nudge(NUDGE, 0);
+          else if (k === 'ArrowUp') nudge(0, -NUDGE);
+          else nudge(0, NUDGE);
+        } else {
+          navigate(k);
+        }
+        return;
+      }
       if (k === 'a' || k === 'A') { e.preventDefault(); resetOffsets(); return; }
     }, true);
 
