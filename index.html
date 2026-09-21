@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <title>단축키 마인드맵 (실시간 동기화)</title>
+  <title>단축키 마인드맵 (실시간 동기화 & 목록 관리)</title>
   <!-- Firebase SDK 라이브러리 추가 -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
@@ -19,6 +19,7 @@
       display: flex; flex-wrap: wrap; gap: 6px 14px;
       font-size: 12px; color: #475569; user-select: none;
       max-width: calc(100vw - 24px);
+      align-items: center;
     }
     #toolbar .item { cursor: pointer; white-space: nowrap; }
     #toolbar .item:hover { color: #1d4ed8; }
@@ -65,6 +66,41 @@
       position: absolute; visibility: hidden; white-space: pre; font-size: 14px;
       font-family: inherit; top: -9999px; left: -9999px;
     }
+
+    /* 목록 팝업 스타일 */
+    #modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 2000;
+      display: none; justify-content: center; align-items: center;
+    }
+    #modal {
+      background: #ffffff; border-radius: 12px; width: 440px; max-width: 90vw;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.15); padding: 20px; display: flex;
+      flex-direction: column; max-height: 80vh;
+    }
+    #modal-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 14px; font-weight: 700; font-size: 16px; color: #1e293b;
+    }
+    #modal-close {
+      cursor: pointer; font-size: 18px; color: #64748b; font-weight: normal;
+    }
+    #modal-close:hover { color: #0f172a; }
+    #map-list {
+      overflow-y: auto; display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px;
+    }
+    .map-item {
+      padding: 10px 14px; border: 1px solid #e2e8f0; border-radius: 8px;
+      cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+      transition: all 0.15s;
+    }
+    .map-item:hover {
+      background: #f8fafc; border-color: #2563eb;
+    }
+    .map-item.current {
+      background: #eff6ff; border-color: #3b82f6; font-weight: 600;
+    }
+    .map-title { color: #1e293b; font-size: 14px; }
+    .map-id { color: #94a3b8; font-size: 11px; font-family: monospace; }
   </style>
 </head>
 <body>
@@ -79,18 +115,19 @@
     <span class="item" data-action="redo"><span class="kbd">Ctrl+Y</span>복구</span>
     <span class="sep"></span>
     <span class="item" data-action="root"><span class="kbd">F6 / Esc</span>중심 주제로</span>
-    <span class="item" data-action="toRoot"><span class="kbd">Ctrl+M</span>중심 주제 아래로 옮기기</span>
+    <span class="item" data-action="toRoot"><span class="kbd">Ctrl+M</span>중심 주제 아래로</span>
     <span class="item"><span class="kbd">드래그</span>주제 옮기기</span>
     <span class="item"><span class="kbd">Shift+방향키</span>미세 이동</span>
     <span class="item" data-action="resetSel"><span class="kbd">A</span>위치 초기화</span>
-    <span class="item" data-action="resetAll"><span class="kbd">Shift+A</span>전체 자동 정렬</span>
+    <span class="item" data-action="resetAll"><span class="kbd">Shift+A</span>전체 정렬</span>
     <span class="sep"></span>
     <span class="item" data-action="zoomIn"><span class="kbd">+</span></span>
     <span class="item" data-action="zoomOut"><span class="kbd">-</span></span>
     <span class="item" data-action="zoomReset"><span class="kbd">0</span>초기화</span>
     <span class="sep"></span>
-    <span class="item" id="btn-copy-link" style="color:#2563eb; font-weight:bold;">🔗 주소 복사</span>
+    <span class="item" id="btn-list" style="color:#4f46e5; font-weight:bold;">📂 마인드맵 목록</span>
     <span class="item" id="btn-new-map" style="color:#059669; font-weight:bold;">➕ 새 마인드맵</span>
+    <span class="item" id="btn-copy-link" style="color:#2563eb; font-weight:bold;">🔗 주소 복사</span>
     <span id="sync-status">● 연결됨</span>
   </div>
 
@@ -102,14 +139,28 @@
   </div>
 
   <div id="hint">
-    주제를 <b>드래그</b>하면 하위 가지까지 함께 이동 · 다른 주제 <b>위에 놓으면</b> 그 주제의 하위로 편입 ·
-    <b>Ctrl+M</b> 선택 주제를 중심 주제 바로 아래로 · <b>A</b> 선택 가지 위치 초기화 / <b>Shift+A</b> 전체 자동 정렬<br>
+    주제를 <b>드래그</b>하면 하위 가지까지 이동 · 다른 주제 <b>위에 놓으면</b> 하위 편입 ·
+    <b>Ctrl+M</b> 중심 주제 바로 아래로 · <b>A</b> 가지 위치 초기화 / <b>Shift+A</b> 전체 정렬<br>
     <b>현재 주소를 공유하면 여러 기기에서 실시간 동시 작업이 가능합니다.</b>
   </div>
   <span id="measurer"></span>
 
+  <!-- 마인드맵 목록 팝업 -->
+  <div id="modal-overlay">
+    <div id="modal">
+      <div id="modal-header">
+        <span>내 마인드맵 목록</span>
+        <span id="modal-close">✕</span>
+      </div>
+      <div id="map-list">
+        <div style="text-align:center; color:#94a3b8; font-size:13px; padding:20px;">불러오는 중...</div>
+      </div>
+      <button id="btn-modal-new" style="padding:10px; background:#2563eb; color:#fff; border:none; border-radius:6px; font-weight:600; cursor:pointer;">+ 새 마인드맵 만들기</button>
+    </div>
+  </div>
+
   <script>
-    // ---------- Firebase 초기화 ----------
+    // ---------- Firebase 설정 ----------
     const firebaseConfig = {
       apiKey: "AIzaSyA2nPDilvlr0kxGRZQz6eRmnEKS7KsMn7M",
       authDomain: "mindmap-app-f3284.firebaseapp.com",
@@ -122,7 +173,7 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    // ---------- 방(마인드맵) 고유 ID 관리 ----------
+    // ---------- 고유 마인드맵 ID 식별 ----------
     function getRoomId() {
       let hash = window.location.hash.replace('#', '').trim();
       if (!hash) {
@@ -131,8 +182,19 @@
       }
       return hash;
     }
-    const currentRoomId = getRoomId();
-    const mapRef = db.ref('mindmaps/' + currentRoomId);
+    let currentRoomId = getRoomId();
+    let mapRef = db.ref('mindmaps/' + currentRoomId);
+
+    // 해시 변경 감지 (목록에서 클릭해 전환 시)
+    window.addEventListener('hashchange', () => {
+      const newRoom = getRoomId();
+      if (newRoom !== currentRoomId) {
+        currentRoomId = newRoom;
+        mapRef.off();
+        mapRef = db.ref('mindmaps/' + currentRoomId);
+        bindRealtimeSync();
+      }
+    });
 
     // ---------- 설정 ----------
     const H_GAP = 70;
@@ -175,12 +237,14 @@
     const syncStatus = document.getElementById('sync-status');
     const els = {};
 
-    // ---------- 실시간 클라우드 동기화 ----------
+    // ---------- 실시간 동기화 ----------
     function pushToCloud() {
       if (isRemoteUpdating) return;
       syncStatus.textContent = '● 저장 중...';
       syncStatus.style.color = '#f59e0b';
+      const root = rootNode();
       mapRef.set({
+        title: root ? root.text : '중심 주제',
         nodes: nodes,
         nextId: nextId,
         updatedAt: firebase.database.ServerValue.TIMESTAMP
@@ -190,24 +254,31 @@
       }).catch(err => {
         syncStatus.textContent = '● 동기화 오류';
         syncStatus.style.color = '#ef4444';
-        console.error(err);
       });
     }
 
-    mapRef.on('value', (snapshot) => {
-      const data = snapshot.val();
-      if (data && data.nodes) {
-        isRemoteUpdating = true;
-        nodes = data.nodes;
-        nextId = data.nextId || 2;
-        if (!byId(selectedNodeId)) selectedNodeId = rootNode().id;
-        render();
-        isRemoteUpdating = false;
-      } else {
-        // 새로 생성된 맵인 경우 초기 데이터 업로드
-        pushToCloud();
-      }
-    });
+    function bindRealtimeSync() {
+      mapRef.on('value', (snapshot) => {
+        const data = snapshot.val();
+        if (data && data.nodes) {
+          isRemoteUpdating = true;
+          nodes = data.nodes;
+          nextId = data.nextId || 2;
+          if (!byId(selectedNodeId)) selectedNodeId = rootNode().id;
+          render();
+          centerOnNode(rootNode(), false);
+          isRemoteUpdating = false;
+        } else {
+          nodes = [{ id: 1, text: '중심 주제', parentId: null, isRoot: true, colorIndex: null, dx: 0, dy: 0 }];
+          nextId = 2;
+          selectedNodeId = 1;
+          render();
+          centerOnNode(rootNode(), false);
+          pushToCloud();
+        }
+      });
+    }
+    bindRealtimeSync();
 
     // ---------- 유틸 ----------
     function byId(id) { return nodes.find(n => n.id === id); }
@@ -250,7 +321,7 @@
       undoStack.push(snap || snapshot());
       if (undoStack.length > 200) undoStack.shift();
       redoStack = [];
-      pushToCloud(); // 변경 시 클라우드 실시간 전송
+      pushToCloud();
     }
 
     // ---------- 레이아웃 ----------
@@ -589,7 +660,7 @@
       if (k === '0') { e.preventDefault(); setZoom(1); return; }
     }, true);
 
-    // ---------- 마우스 조작 ----------
+    // ---------- 마우스 드래그 & 이동 ----------
     let drag = null;
     let pan = null;
 
@@ -680,7 +751,71 @@
       }
     }, { passive: false });
 
-    // ---------- 툴바 클릭 이벤트 ----------
+    // ---------- 목록 팝업 열기/닫기/조회 ----------
+    const modalOverlay = document.getElementById('modal-overlay');
+    const mapListContainer = document.getElementById('map-list');
+
+    function openModal() {
+      modalOverlay.style.display = 'flex';
+      mapListContainer.innerHTML = '<div style="text-align:center; color:#94a3b8; font-size:13px; padding:20px;">목록을 불러오는 중...</div>';
+      
+      db.ref('mindmaps').once('value').then(snapshot => {
+        const data = snapshot.val();
+        mapListContainer.innerHTML = '';
+        if (!data) {
+          mapListContainer.innerHTML = '<div style="text-align:center; color:#94a3b8; font-size:13px; padding:20px;">저장된 마인드맵이 없습니다.</div>';
+          return;
+        }
+
+        Object.keys(data).forEach(key => {
+          const mapData = data[key];
+          const item = document.createElement('div');
+          item.className = 'map-item' + (key === currentRoomId ? ' current' : '');
+          
+          const titleText = mapData.title || (mapData.nodes && mapData.nodes[0] ? mapData.nodes[0].text : '중심 주제');
+          item.innerHTML = `
+            <span class="map-title">${titleText}</span>
+            <span class="map-id">#${key}</span>
+          `;
+          
+          item.addEventListener('click', () => {
+            window.location.hash = key;
+            closeModal();
+          });
+          mapListContainer.appendChild(item);
+        });
+      }).catch(err => {
+        mapListContainer.innerHTML = '<div style="text-align:center; color:#ef4444; font-size:13px; padding:20px;">불러오기 실패: ' + err.message + '</div>';
+      });
+    }
+
+    function closeModal() {
+      modalOverlay.style.display = 'none';
+    }
+
+    document.getElementById('btn-list').addEventListener('click', openModal);
+    document.getElementById('modal-close').addEventListener('click', closeModal);
+    modalOverlay.addEventListener('click', (e) => {
+      if (e.target === modalOverlay) closeModal();
+    });
+
+    // 새 마인드맵 만들기
+    function createNewMap() {
+      const newRoom = 'map-' + Math.random().toString(36).substring(2, 8);
+      window.location.hash = newRoom;
+      closeModal();
+    }
+    document.getElementById('btn-new-map').addEventListener('click', createNewMap);
+    document.getElementById('btn-modal-new').addEventListener('click', createNewMap);
+
+    // 주소 복사
+    document.getElementById('btn-copy-link').addEventListener('click', () => {
+      navigator.clipboard.writeText(window.location.href).then(() => {
+        alert('현재 마인드맵 주소가 복사되었습니다!\n다른 브라우저나 스마트폰에 붙여넣어 공유하세요.');
+      });
+    });
+
+    // ---------- 툴바 클릭 ----------
     document.getElementById('toolbar').addEventListener('click', (e) => {
       const item = e.target.closest('.item');
       if (!item) return;
@@ -701,25 +836,7 @@
       else if (a === 'zoomReset') setZoom(1);
     });
 
-    // 주소 복사 버튼
-    document.getElementById('btn-copy-link').addEventListener('click', () => {
-      navigator.clipboard.writeText(window.location.href).then(() => {
-        alert('마인드맵 공유 주소가 복사되었습니다!\n다른 브라우저나 스마트폰에서 붙여넣어 접속하세요.');
-      });
-    });
-
-    // 새 마인드맵 만들기 버튼
-    document.getElementById('btn-new-map').addEventListener('click', () => {
-      const newRoom = 'map-' + Math.random().toString(36).substring(2, 8);
-      const newUrl = window.location.origin + window.location.pathname + '#' + newRoom;
-      window.open(newUrl, '_blank');
-    });
-
     window.addEventListener('resize', () => { centerOnNode(byId(selectedNodeId), false); });
-
-    // ---------- 초기 로드 ----------
-    render();
-    centerOnNode(rootNode(), false);
   </script>
 </body>
 </html>
