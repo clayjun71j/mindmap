@@ -2,34 +2,38 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <title>단축키 마인드맵 (실시간 동기화 & 목록 관리 및 삭제)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>단축키 & 모바일 터치 마인드맵</title>
   <!-- Firebase SDK 라이브러리 -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Malgun Gothic", sans-serif;
       width: 100vw; height: 100vh; overflow: hidden; background-color: #f1f5f9;
+      touch-action: none; /* 브라우저 기본 제스처 방지 */
     }
     #toolbar {
-      position: fixed; top: 12px; left: 12px; z-index: 1000;
+      position: fixed; top: 10px; left: 10px; z-index: 1000;
       background: #ffffff; padding: 8px 12px; border-radius: 8px;
       box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-      display: flex; flex-wrap: wrap; gap: 6px 14px;
-      font-size: 12px; color: #475569; user-select: none;
-      max-width: calc(100vw - 24px);
+      display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 8px 12px;
+      font-size: 13px; color: #475569; user-select: none;
+      max-width: calc(100vw - 20px);
       align-items: center;
+      scrollbar-width: none;
     }
-    #toolbar .item { cursor: pointer; white-space: nowrap; }
-    #toolbar .item:hover { color: #0284c7; }
-    #toolbar .sep { width: 1px; background: #e2e8f0; align-self: stretch; }
+    #toolbar::-webkit-scrollbar { display: none; }
+    #toolbar .item { cursor: pointer; white-space: nowrap; padding: 3px 6px; border-radius: 4px; }
+    #toolbar .item:active, #toolbar .item:hover { color: #0284c7; background: #f0f9ff; }
+    #toolbar .sep { width: 1px; height: 16px; background: #e2e8f0; flex-shrink: 0; }
     .kbd {
       background: #e2e8f0; border-radius: 4px; padding: 1px 5px;
       font-family: Consolas, monospace; font-size: 11px; color: #1e293b; margin-right: 3px;
     }
     #sync-status {
-      font-weight: 600; color: #10b981; display: flex; align-items: center; gap: 4px;
+      font-weight: 600; color: #10b981; display: flex; align-items: center; gap: 4px; white-space: nowrap;
     }
     #viewport { position: absolute; inset: 0; overflow: hidden; cursor: grab; }
     #viewport.panning { cursor: grabbing; }
@@ -49,7 +53,6 @@
       cursor: pointer; user-select: none; text-align: center; min-width: 60px;
       transition: background-color 0.15s, box-shadow 0.15s, border-color 0.15s, transform 0.15s;
     }
-    /* 연하고 부드러운 중심주제 스타일 */
     .node.root { 
       font-weight: 700; font-size: 16px; padding: 10px 22px; 
       color: #0369a1; background: #e0f2fe; border-color: #38bdf8;
@@ -91,18 +94,17 @@
       margin-bottom: 14px; font-weight: 700; font-size: 16px; color: #1e293b;
     }
     #modal-close {
-      cursor: pointer; font-size: 18px; color: #64748b; font-weight: normal;
+      cursor: pointer; font-size: 20px; color: #64748b; font-weight: normal; padding: 4px;
     }
-    #modal-close:hover { color: #0f172a; }
     #map-list {
       overflow-y: auto; display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px;
     }
     .map-item {
-      padding: 10px 14px; border: 1px solid #e2e8f0; border-radius: 8px;
+      padding: 12px 14px; border: 1px solid #e2e8f0; border-radius: 8px;
       cursor: pointer; display: flex; justify-content: space-between; align-items: center;
       transition: all 0.15s; background: #fff;
     }
-    .map-item:hover {
+    .map-item:active, .map-item:hover {
       background: #f8fafc; border-color: #0284c7;
     }
     .map-item.current {
@@ -116,10 +118,10 @@
     
     .btn-delete-map {
       background: transparent; border: none; color: #94a3b8;
-      padding: 6px 8px; border-radius: 6px; cursor: pointer;
-      font-size: 12px; transition: all 0.15s; margin-left: 8px;
+      padding: 6px 10px; border-radius: 6px; cursor: pointer;
+      font-size: 13px; transition: all 0.15s; margin-left: 8px;
     }
-    .btn-delete-map:hover {
+    .btn-delete-map:active, .btn-delete-map:hover {
       background: #fee2e2; color: #ef4444; font-weight: bold;
     }
   </style>
@@ -131,23 +133,19 @@
     <span class="item" data-action="sibling"><span class="kbd">Enter</span>동일레벨 추가</span>
     <span class="item" data-action="edit"><span class="kbd">F2</span>수정</span>
     <span class="item" data-action="delete"><span class="kbd">Del</span>삭제</span>
-    <span class="item"><span class="kbd">방향키</span>선택 이동</span>
     <span class="item" data-action="undo"><span class="kbd">Ctrl+Z</span>취소</span>
     <span class="item" data-action="redo"><span class="kbd">Ctrl+Y</span>복구</span>
     <span class="sep"></span>
-    <span class="item" data-action="root"><span class="kbd">F6 / Esc</span>중심 주제로</span>
-    <span class="item" data-action="toRoot"><span class="kbd">Ctrl+M</span>중심 주제 아래로</span>
-    <span class="item"><span class="kbd">드래그</span>주제 옮기기/편입</span>
-    <span class="item"><span class="kbd">Shift+방향키</span>미세 이동</span>
-    <span class="item" data-action="resetSel"><span class="kbd">A</span>위치 초기화</span>
-    <span class="item" data-action="resetAll"><span class="kbd">Shift+A</span>전체 정렬</span>
+    <span class="item" data-action="root"><span class="kbd">F6</span>중심으로</span>
+    <span class="item" data-action="toRoot">중심주제 아래로</span>
+    <span class="item" data-action="resetAll">전체 정렬</span>
     <span class="sep"></span>
-    <span class="item" data-action="zoomIn"><span class="kbd">+</span></span>
-    <span class="item" data-action="zoomOut"><span class="kbd">-</span></span>
-    <span class="item" data-action="zoomReset"><span class="kbd">0</span>초기화</span>
+    <span class="item" data-action="zoomIn">➕ 확대</span>
+    <span class="item" data-action="zoomOut">➖ 축소</span>
+    <span class="item" data-action="zoomReset">0️⃣ 리셋</span>
     <span class="sep"></span>
-    <span class="item" id="btn-list" style="color:#4f46e5; font-weight:bold;">📂 마인드맵 목록</span>
-    <span class="item" id="btn-new-map" style="color:#059669; font-weight:bold;">➕ 새 마인드맵</span>
+    <span class="item" id="btn-list" style="color:#4f46e5; font-weight:bold;">📂 목록</span>
+    <span class="item" id="btn-new-map" style="color:#059669; font-weight:bold;">➕ 새 맵</span>
     <span class="item" id="btn-copy-link" style="color:#0284c7; font-weight:bold;">🔗 주소 복사</span>
     <span id="sync-status">● 연결됨</span>
   </div>
@@ -161,7 +159,7 @@
 
   <span id="measurer"></span>
 
-  <!-- 마인드맵 목록 팝업 -->
+  <!-- 마인드맵 목록 및 삭제 팝업 -->
   <div id="modal-overlay">
     <div id="modal">
       <div id="modal-header">
@@ -171,7 +169,7 @@
       <div id="map-list">
         <div style="text-align:center; color:#94a3b8; font-size:13px; padding:20px;">불러오는 중...</div>
       </div>
-      <button id="btn-modal-new" style="padding:10px; background:#0284c7; color:#fff; border:none; border-radius:6px; font-weight:600; cursor:pointer;">+ 새 마인드맵 만들기</button>
+      <button id="btn-modal-new" style="padding:12px; background:#0284c7; color:#fff; border:none; border-radius:6px; font-weight:600; cursor:pointer;">+ 새 마인드맵 만들기</button>
     </div>
   </div>
 
@@ -211,9 +209,9 @@
       }
     });
 
-    // ---------- 간격 설정 (충돌 차단) ----------
-    const H_GAP = 40;   // 부모-자식 가로 간격
-    const V_GAP = 24;   // 형제 가지 간 수직 최소 여백
+    // ---------- 설정 ----------
+    const H_GAP = 40;
+    const V_GAP = 24;
     const NUDGE = 20;
 
     const PALETTE = [
@@ -338,7 +336,7 @@
       pushToCloud();
     }
 
-    // ---------- 완벽한 겹침/교차 차단 레이아웃 계산 ----------
+    // ---------- 레이아웃 계산 ----------
     function computeTreeHeight(n) {
       const ch = childrenOf(n.id);
       const myH = n.h || 38;
@@ -379,17 +377,36 @@
       }
     }
 
-    // ---------- 렌더 ----------
+    // ---------- 렌더 & 이벤트 바인딩 ----------
+    let lastTapTime = 0;
+
     function createNodeEl(n) {
       const el = document.createElement('div');
       el.className = 'node';
       el.dataset.id = n.id;
+      
+      // 마우스 이벤트
       el.addEventListener('mousedown', onNodeMouseDown);
       el.addEventListener('dblclick', (e) => { 
         e.stopPropagation(); 
         selectNode(n.id, false); 
         startEdit();
       });
+
+      // 모바일 터치 이벤트 (더블 탭 지원)
+      el.addEventListener('touchstart', (e) => {
+        if (isEditing && editingId === n.id) return;
+        const now = Date.now();
+        selectNode(n.id, false);
+        if (now - lastTapTime < 300) {
+          // 300ms 이내 더블 탭 -> 즉시 텍스트 편집 실행
+          e.preventDefault();
+          e.stopPropagation();
+          startEdit();
+        }
+        lastTapTime = now;
+      }, { passive: false });
+
       canvas.appendChild(el);
       els[n.id] = el;
       return el;
@@ -458,7 +475,7 @@
       svg.innerHTML = s;
     }
 
-    // ---------- 화면 이동/확대 ----------
+    // ---------- 화면 변환 (Pan & Zoom) ----------
     function updateTransform() {
       world.style.transform = 'translate(' + panX + 'px,' + panY + 'px) scale(' + zoom + ')';
     }
@@ -508,7 +525,6 @@
       if (!n || isEditing) return;
       isEditing = true; editingId = n.id; editSnapshot = snapshot();
 
-      // 텍스트 입력 모드에서만 중앙 이동
       centerOnNode(n, true);
 
       const el = els[n.id];
@@ -516,9 +532,10 @@
       const input = document.createElement('input');
       input.className = 'node-input';
       input.value = n.text;
-      const fit = () => { input.style.width = Math.max(55, measureText(input.value, n.isRoot) + 12) + 'px'; render(); };
+      const fit = () => { input.style.width = Math.max(55, measureText(input.value, n.isRoot) + 16) + 'px'; render(); };
       input.addEventListener('input', fit);
       input.addEventListener('mousedown', e => e.stopPropagation());
+      input.addEventListener('touchstart', e => e.stopPropagation(), { passive: true });
       input.addEventListener('keydown', (e) => {
         e.stopPropagation();
         if (e.key === 'Enter') { e.preventDefault(); finishEdit(true, false); }
@@ -528,9 +545,10 @@
       });
       input.addEventListener('blur', () => { if (isEditing && editingId === n.id) finishEdit(true, false); });
       el.appendChild(input);
-      input.style.width = Math.max(55, measureText(n.text, n.isRoot) + 12) + 'px';
+      input.style.width = Math.max(55, measureText(n.text, n.isRoot) + 16) + 'px';
       render();
-      input.focus(); input.select();
+      input.focus(); 
+      input.select();
     }
 
     function finishEdit(commit, center) {
@@ -552,7 +570,7 @@
       if (center && n) centerOnNode(n, true);
     }
 
-    // ---------- 노드 조작 (오프셋 0 초기화 적용) ----------
+    // ---------- 노드 조작 ----------
     function addChild() {
       const p = byId(selectedNodeId);
       if (!p) return;
@@ -601,7 +619,7 @@
       if (node.id === newParent.id || isDescendant(newParent, node.id)) return false;
       node.parentId = newParent.id;
       node.dx = 0; 
-      node.dy = 0; // 편입 시 꼬임 방지를 위해 오프셋 완전히 리셋
+      node.dy = 0;
       if (newParent.isRoot) node.colorIndex = freeColorIndex(node.id);
       nodes.splice(nodes.indexOf(node), 1);
       nodes.push(node);
@@ -618,114 +636,34 @@
       render();
     }
 
-    function nudge(dx, dy) {
-      const cur = byId(selectedNodeId);
-      if (!cur || cur.isRoot) return;
-      cur.dx = (cur.dx || 0) + dx; cur.dy = (cur.dy || 0) + dy;
-      saveState();
-      render();
-    }
-
     function resetOffsets(all) {
-      const cur = byId(selectedNodeId);
-      nodes.forEach(n => {
-        if (all || n.id === cur.id || isDescendant(n, cur.id)) { 
-          n.dx = 0; 
-          n.dy = 0; 
-        }
-      });
+      nodes.forEach(n => { n.dx = 0; n.dy = 0; });
       saveState();
       render();
-    }
-
-    function restore(json) {
-      nodes = JSON.parse(json);
-      nodes.forEach(n => { if (n.id >= nextId) nextId = n.id + 1; });
-      if (!byId(selectedNodeId)) selectedNodeId = rootNode().id;
-      pushToCloud();
-      render();
+      centerOnNode(byId(selectedNodeId), true);
     }
 
     function undo() {
       if (isEditing) finishEdit(true, false);
       if (!undoStack.length) return;
       redoStack.push(snapshot());
-      restore(undoStack.pop());
+      nodes = JSON.parse(undoStack.pop());
+      nodes.forEach(n => { if (n.id >= nextId) nextId = n.id + 1; });
+      if (!byId(selectedNodeId)) selectedNodeId = rootNode().id;
+      pushToCloud();
+      render();
     }
 
     function redo() {
       if (isEditing) finishEdit(true, false);
       if (!redoStack.length) return;
       undoStack.push(snapshot());
-      restore(redoStack.pop());
+      nodes = JSON.parse(redoStack.pop());
+      nodes.forEach(n => { if (n.id >= nextId) nextId = n.id + 1; });
+      if (!byId(selectedNodeId)) selectedNodeId = rootNode().id;
+      pushToCloud();
+      render();
     }
-
-    // ---------- 방향키 탐색 ----------
-    function navigate(dir) {
-      const cur = byId(selectedNodeId);
-      if (!cur) return;
-      let target = null;
-      if (dir === 'ArrowLeft') {
-        if (cur.parentId !== null) target = byId(cur.parentId);
-      } else if (dir === 'ArrowRight') {
-        const ch = childrenOf(cur.id);
-        if (ch.length) target = ch[Math.floor((ch.length - 1) / 2)];
-      } else {
-        const up = (dir === 'ArrowUp');
-        if (cur.parentId !== null) {
-          const sib = childrenOf(cur.parentId);
-          const i = sib.indexOf(cur);
-          if (up && i > 0) target = sib[i - 1];
-          if (!up && i < sib.length - 1) target = sib[i + 1];
-        }
-        if (!target) {
-          const d = depthOf(cur);
-          const cy = cur.y + cur.h / 2;
-          let best = null, bestDist = Infinity;
-          nodes.forEach(n => {
-            if (n.id === cur.id || depthOf(n) !== d) return;
-            const ny = n.y + n.h / 2;
-            if ((up && ny < cy) || (!up && ny > cy)) {
-              const dist = Math.abs(ny - cy) + Math.abs(n.x - cur.x) * 0.3;
-              if (dist < bestDist) { bestDist = dist; best = n; }
-            }
-          });
-          target = best;
-        }
-      }
-      if (target) selectNode(target.id, false);
-    }
-
-    // ---------- 키보드 이벤트 ----------
-    window.addEventListener('keydown', (e) => {
-      if (e.key === 'F6') { e.preventDefault(); e.stopPropagation(); goRoot(); return; }
-      if (isEditing) return;
-      const k = e.key;
-      if (e.ctrlKey && !e.shiftKey && (k === 'z' || k === 'Z')) { e.preventDefault(); undo(); return; }
-      if ((e.ctrlKey && (k === 'y' || k === 'Y')) || (e.ctrlKey && e.shiftKey && (k === 'z' || k === 'Z'))) { e.preventDefault(); redo(); return; }
-      if (e.ctrlKey && (k === 'm' || k === 'M')) { e.preventDefault(); moveToRoot(); return; }
-      if (e.ctrlKey || e.altKey || e.metaKey) return;
-
-      if (k === 'Escape' || k === 'Home' || k === '1') { e.preventDefault(); goRoot(); return; }
-      if (k === 'Tab') { e.preventDefault(); addChild(); return; }
-      if (k === 'Enter') { e.preventDefault(); addSibling(); return; }
-      if (k === 'F2') { e.preventDefault(); startEdit(); return; }
-      if (k === 'Delete' || k === 'Backspace') { e.preventDefault(); deleteNode(); return; }
-      if (k.startsWith('Arrow')) {
-        e.preventDefault();
-        if (e.shiftKey) {
-          if (k === 'ArrowLeft') nudge(-NUDGE, 0);
-          else if (k === 'ArrowRight') nudge(NUDGE, 0);
-          else if (k === 'ArrowUp') nudge(0, -NUDGE);
-          else nudge(0, NUDGE);
-        } else navigate(k);
-        return;
-      }
-      if (k === 'a' || k === 'A') { e.preventDefault(); resetOffsets(e.shiftKey); return; }
-      if (k === '+' || k === '=') { e.preventDefault(); setZoom(zoom * 1.2); return; }
-      if (k === '-' || k === '_') { e.preventDefault(); setZoom(zoom / 1.2); return; }
-      if (k === '0') { e.preventDefault(); setZoom(1); return; }
-    }, true);
 
     // ---------- 마우스 조작 ----------
     let drag = null;
@@ -739,16 +677,7 @@
       if (isEditing) return;
       selectNode(id, false);
       const n = byId(id);
-      drag = { 
-        id: id, 
-        sx: e.clientX, 
-        sy: e.clientY, 
-        odx: n.dx || 0, 
-        ody: n.dy || 0, 
-        moved: false, 
-        snap: snapshot(), 
-        over: null 
-      };
+      drag = { id: id, sx: e.clientX, sy: e.clientY, odx: n.dx || 0, ody: n.dy || 0, moved: false, snap: snapshot(), over: null };
       e.preventDefault();
     }
 
@@ -789,9 +718,7 @@
 
         if (overId !== null) {
           const t = byId(overId);
-          if (!t || t.id === n.id || t.id === n.parentId || isDescendant(t, n.id)) {
-            overId = null;
-          }
+          if (!t || t.id === n.id || t.id === n.parentId || isDescendant(t, n.id)) overId = null;
         }
 
         if (drag.over !== overId) {
@@ -808,16 +735,11 @@
         const n = byId(drag.id);
         if (n && drag.moved) {
           els[n.id].classList.remove('dragging');
-          if (drag.over !== null && els[drag.over]) {
-            els[drag.over].classList.remove('drag-over');
-          }
-          
+          if (drag.over !== null && els[drag.over]) els[drag.over].classList.remove('drag-over');
           if (drag.over !== null) {
             const targetParent = byId(drag.over);
             n.dx = 0; n.dy = 0;
-            if (reparent(n, targetParent, false)) {
-              saveState(drag.snap);
-            }
+            if (reparent(n, targetParent, false)) saveState(drag.snap);
             render();
           } else {
             saveState(drag.snap);
@@ -838,6 +760,90 @@
         updateTransform();
       }
     }, { passive: false });
+
+    // ---------- 모바일 터치 제스처 (Pan & Pinch Zoom 지원) ----------
+    let touchPan = null;
+    let initialPinchDist = null;
+    let initialZoom = 1.0;
+
+    viewport.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) {
+        const t = e.touches[0];
+        touchPan = { sx: t.clientX, sy: t.clientY, px: panX, py: panY };
+        world.classList.add('notrans');
+      } else if (e.touches.length === 2) {
+        touchPan = null;
+        const dist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        initialPinchDist = dist;
+        initialZoom = zoom;
+      }
+    }, { passive: true });
+
+    viewport.addEventListener('touchmove', (e) => {
+      if (e.touches.length === 1 && touchPan) {
+        const t = e.touches[0];
+        panX = touchPan.px + (t.clientX - touchPan.sx);
+        panY = touchPan.py + (t.clientY - touchPan.sy);
+        updateTransform();
+      } else if (e.touches.length === 2 && initialPinchDist) {
+        const dist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        const factor = dist / initialPinchDist;
+        zoom = Math.min(2.5, Math.max(0.3, initialZoom * factor));
+        updateTransform();
+      }
+    }, { passive: true });
+
+    viewport.addEventListener('touchend', (e) => {
+      if (e.touches.length < 2) initialPinchDist = null;
+      if (e.touches.length === 0) touchPan = null;
+    });
+
+    // ---------- 키보드 이벤트 (PC 단축키) ----------
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'F6') { e.preventDefault(); goRoot(); return; }
+      if (isEditing) return;
+      const k = e.key;
+      if (e.ctrlKey && !e.shiftKey && (k === 'z' || k === 'Z')) { e.preventDefault(); undo(); return; }
+      if ((e.ctrlKey && (k === 'y' || k === 'Y')) || (e.ctrlKey && e.shiftKey && (k === 'z' || k === 'Z'))) { e.preventDefault(); redo(); return; }
+      if (e.ctrlKey && (k === 'm' || k === 'M')) { e.preventDefault(); moveToRoot(); return; }
+      if (e.ctrlKey || e.altKey || e.metaKey) return;
+
+      if (k === 'Escape' || k === 'Home' || k === '1') { e.preventDefault(); goRoot(); return; }
+      if (k === 'Tab') { e.preventDefault(); addChild(); return; }
+      if (k === 'Enter') { e.preventDefault(); addSibling(); return; }
+      if (k === 'F2') { e.preventDefault(); startEdit(); return; }
+      if (k === 'Delete' || k === 'Backspace') { e.preventDefault(); deleteNode(); return; }
+      if (k === 'a' || k === 'A') { e.preventDefault(); resetOffsets(true); return; }
+      if (k === '+' || k === '=') { e.preventDefault(); setZoom(zoom * 1.2); return; }
+      if (k === '-' || k === '_') { e.preventDefault(); setZoom(zoom / 1.2); return; }
+      if (k === '0') { e.preventDefault(); setZoom(1); return; }
+    }, true);
+
+    // ---------- 툴바 클릭 이벤트 (PC 마우스 & 모바일 터치) ----------
+    document.getElementById('toolbar').addEventListener('click', (e) => {
+      const item = e.target.closest('.item');
+      if (!item) return;
+      const a = item.dataset.action;
+      if (isEditing && a !== 'edit') finishEdit(true, false);
+      if (a === 'child') addChild();
+      else if (a === 'sibling') addSibling();
+      else if (a === 'edit') startEdit();
+      else if (a === 'delete') deleteNode();
+      else if (a === 'undo') undo();
+      else if (a === 'redo') redo();
+      else if (a === 'root') goRoot();
+      else if (a === 'toRoot') moveToRoot();
+      else if (a === 'resetAll') resetOffsets(true);
+      else if (a === 'zoomIn') setZoom(zoom * 1.2);
+      else if (a === 'zoomOut') setZoom(zoom / 1.2);
+      else if (a === 'zoomReset') setZoom(1);
+    });
 
     // ---------- 목록 팝업 열기/닫기/조회 & 삭제 ----------
     const modalOverlay = document.getElementById('modal-overlay');
@@ -921,7 +927,6 @@
       if (e.target === modalOverlay) closeModal();
     });
 
-    // 새 마인드맵 만들기
     function createNewMap() {
       const newRoom = 'map-' + Math.random().toString(36).substring(2, 8);
       window.location.hash = newRoom;
@@ -930,32 +935,10 @@
     document.getElementById('btn-new-map').addEventListener('click', createNewMap);
     document.getElementById('btn-modal-new').addEventListener('click', createNewMap);
 
-    // 주소 복사
     document.getElementById('btn-copy-link').addEventListener('click', () => {
       navigator.clipboard.writeText(window.location.href).then(() => {
-        alert('현재 마인드맵 주소가 복사되었습니다!\n다른 브라우저나 스마트폰에 붙여넣어 공유하세요.');
+        alert('현재 마인드맵 주소가 복사되었습니다!\n다른 기기에 공유하세요.');
       });
-    });
-
-    // ---------- 툴바 클릭 ----------
-    document.getElementById('toolbar').addEventListener('click', (e) => {
-      const item = e.target.closest('.item');
-      if (!item) return;
-      const a = item.dataset.action;
-      if (isEditing && a !== 'edit') finishEdit(true, false);
-      if (a === 'child') addChild();
-      else if (a === 'sibling') addSibling();
-      else if (a === 'edit') startEdit();
-      else if (a === 'delete') deleteNode();
-      else if (a === 'undo') undo();
-      else if (a === 'redo') redo();
-      else if (a === 'root') goRoot();
-      else if (a === 'toRoot') moveToRoot();
-      else if (a === 'resetSel') resetOffsets(false);
-      else if (a === 'resetAll') resetOffsets(true);
-      else if (a === 'zoomIn') setZoom(zoom * 1.2);
-      else if (a === 'zoomOut') setZoom(zoom / 1.2);
-      else if (a === 'zoomReset') setZoom(1);
     });
 
     window.addEventListener('resize', () => { centerOnNode(byId(selectedNodeId), false); });
