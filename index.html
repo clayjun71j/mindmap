@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <title>단축키 마인드맵 (실시간 동기화 & 목록 관리)</title>
+  <title>단축키 마인드맵 (실시간 동기화 & 드래그 편입 강화)</title>
   <!-- Firebase SDK 라이브러리 추가 -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
@@ -52,11 +52,16 @@
       border: 2px solid #94a3b8; background: #ffffff;
       font-size: 14px; color: #1e293b; white-space: nowrap;
       cursor: pointer; user-select: none; text-align: center; min-width: 60px;
-      transition: background-color 0.15s, box-shadow 0.15s;
+      transition: background-color 0.15s, box-shadow 0.15s, border-color 0.15s;
     }
     .node.root { font-weight: 700; font-size: 16px; padding: 10px 20px; color: #ffffff; }
-    .node.dragging { opacity: 0.75; pointer-events: none; z-index: 10; }
-    .node.drag-over { border-style: dashed; box-shadow: 0 0 0 3px rgba(37,99,235,0.35) !important; }
+    .node.dragging { opacity: 0.75; pointer-events: none !important; z-index: 100 !important; }
+    .node.drag-over { 
+      border-style: dashed !important; 
+      border-color: #2563eb !important; 
+      box-shadow: 0 0 0 4px rgba(37,99,235,0.4) !important;
+      transform: scale(1.04);
+    }
     .node-input {
       font-family: inherit; font-size: inherit; border: none; outline: none;
       text-align: center; background: transparent; min-width: 60px;
@@ -116,7 +121,7 @@
     <span class="sep"></span>
     <span class="item" data-action="root"><span class="kbd">F6 / Esc</span>중심 주제로</span>
     <span class="item" data-action="toRoot"><span class="kbd">Ctrl+M</span>중심 주제 아래로</span>
-    <span class="item"><span class="kbd">드래그</span>주제 옮기기</span>
+    <span class="item"><span class="kbd">드래그</span>주제 옮기기/편입</span>
     <span class="item"><span class="kbd">Shift+방향키</span>미세 이동</span>
     <span class="item" data-action="resetSel"><span class="kbd">A</span>위치 초기화</span>
     <span class="item" data-action="resetAll"><span class="kbd">Shift+A</span>전체 정렬</span>
@@ -139,9 +144,8 @@
   </div>
 
   <div id="hint">
-    주제를 <b>드래그</b>하면 하위 가지까지 이동 · 다른 주제 <b>위에 놓으면</b> 하위 편입 ·
-    <b>Ctrl+M</b> 중심 주제 바로 아래로 · <b>A</b> 가지 위치 초기화 / <b>Shift+A</b> 전체 정렬<br>
-    <b>현재 주소를 공유하면 여러 기기에서 실시간 동시 작업이 가능합니다.</b>
+    주제를 <b>드래그하여 다른 주제 위에 놓으면</b> 그 주제의 하위로 바로 이동합니다.<br>
+    빈 공간으로 드래그하면 위치 미세 조정 · <b>Ctrl+M</b> 중심 주제 아래로 편입
   </div>
   <span id="measurer"></span>
 
@@ -173,7 +177,7 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    // ---------- 고유 마인드맵 ID 식별 ----------
+    // ---------- 방 식별 ----------
     function getRoomId() {
       let hash = window.location.hash.replace('#', '').trim();
       if (!hash) {
@@ -185,7 +189,6 @@
     let currentRoomId = getRoomId();
     let mapRef = db.ref('mindmaps/' + currentRoomId);
 
-    // 해시 변경 감지 (목록에서 클릭해 전환 시)
     window.addEventListener('hashchange', () => {
       const newRoom = getRoomId();
       if (newRoom !== currentRoomId) {
@@ -660,7 +663,7 @@
       if (k === '0') { e.preventDefault(); setZoom(1); return; }
     }, true);
 
-    // ---------- 마우스 드래그 & 이동 ----------
+    // ---------- 마우스 드래그 & 편입 로직 (핵심 개선) ----------
     let drag = null;
     let pan = null;
 
@@ -672,9 +675,19 @@
       if (isEditing) return;
       selectNode(id, false);
       const n = byId(id);
-      drag = { id: id, sx: e.clientX, sy: e.clientY, odx: n.dx || 0, ody: n.dy || 0, moved: false, snap: snapshot(), over: null };
+      drag = { 
+        id: id, 
+        sx: e.clientX, 
+        sy: e.clientY, 
+        odx: n.dx || 0, 
+        ody: n.dy || 0, 
+        moved: false, 
+        snap: snapshot(), 
+        over: null 
+      };
       e.preventDefault();
     }
+
     viewport.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return;
       if (e.target.closest && e.target.closest('.node')) return;
@@ -684,6 +697,7 @@
       world.classList.add('notrans');
       e.preventDefault();
     });
+
     window.addEventListener('mousemove', (e) => {
       if (pan) {
         panX = pan.px + (e.clientX - pan.sx);
@@ -696,8 +710,8 @@
         if (!n) { drag = null; return; }
         const mx = e.clientX - drag.sx, my = e.clientY - drag.sy;
         if (!drag.moved) {
-          if (Math.abs(mx) < 4 && Math.abs(my) < 4) return;
-          if (n.isRoot) { drag = null; return; }
+          if (Math.abs(mx) < 5 && Math.abs(my) < 5) return;
+          if (n.isRoot) { drag = null; return; } // 중심 주제는 드래그 편입 불가
           drag.moved = true;
           els[n.id].classList.add('dragging');
         }
@@ -705,34 +719,49 @@
         n.dy = drag.ody + my / zoom;
         render();
 
+        // 드롭 대상 노드 판별
         const under = document.elementFromPoint(e.clientX, e.clientY);
         const overEl = under && under.closest ? under.closest('.node') : null;
         let overId = overEl ? +overEl.dataset.id : null;
+
+        // 나 자신, 내 기존 부모, 또는 내 하위 자식 노드 위에는 편입할 수 없음
         if (overId !== null) {
           const t = byId(overId);
-          if (!t || t.id === n.id || t.id === n.parentId || isDescendant(t, n.id)) overId = null;
+          if (!t || t.id === n.id || t.id === n.parentId || isDescendant(t, n.id)) {
+            overId = null;
+          }
         }
+
         if (drag.over !== overId) {
           if (drag.over !== null && els[drag.over]) els[drag.over].classList.remove('drag-over');
-          if (overId !== null) els[overId].classList.add('drag-over');
+          if (overId !== null && els[overId]) els[overId].classList.add('drag-over');
           drag.over = overId;
         }
       }
     });
+
     window.addEventListener('mouseup', (e) => {
       if (pan) { pan = null; viewport.classList.remove('panning'); return; }
       if (drag) {
         const n = byId(drag.id);
         if (n && drag.moved) {
           els[n.id].classList.remove('dragging');
-          if (drag.over !== null && els[drag.over]) els[drag.over].classList.remove('drag-over');
+          if (drag.over !== null && els[drag.over]) {
+            els[drag.over].classList.remove('drag-over');
+          }
+          
+          // 다른 노드 위에서 마우스를 놓았을 때 -> 하위 주제로 편입
           if (drag.over !== null) {
-            const t = byId(drag.over);
-            n.dx = drag.odx; n.dy = drag.ody;
-            if (reparent(n, t, false)) saveState(drag.snap);
+            const targetParent = byId(drag.over);
+            n.dx = 0; 
+            n.dy = 0; // 오프셋 초기화
+            if (reparent(n, targetParent, false)) {
+              saveState(drag.snap);
+            }
             render();
             centerOnNode(n, true);
           } else {
+            // 빈 공간에 놓았을 때 -> 위치 미세 조정 저장
             saveState(drag.snap);
             render();
           }
@@ -740,6 +769,7 @@
         drag = null;
       }
     });
+
     viewport.addEventListener('wheel', (e) => {
       e.preventDefault();
       if (e.ctrlKey) {
@@ -832,7 +862,7 @@
       else if (a === 'resetSel') resetOffsets(false);
       else if (a === 'resetAll') resetOffsets(true);
       else if (a === 'zoomIn') setZoom(zoom * 1.2);
-      else if (a === 'zoomOut') setZoom(zoom / 1.2);
+      else if (a === 'zoomOut') setZoom(zoom / 2.2);
       else if (a === 'zoomReset') setZoom(1);
     });
 
