@@ -255,7 +255,7 @@
     </div>
   </div>
 
-  <!-- 2. 마인드맵 작업 캔버스 화면 (컴팩트 툴바) -->
+  <!-- 2. 마인드맵 작업 캔버스 화면 -->
   <div id="toolbar">
     <span class="item" id="btn-go-home" style="color:#0284c7; font-weight:bold;">🏠 홈</span>
     <span class="sep"></span>
@@ -599,7 +599,7 @@
       return `<span class="node-label">${safeLabel}</span>`;
     }
 
-    // ---------- 레이아웃 엔진 ----------
+    // ---------- 레이아웃 엔진 (방향 상속 완벽 고정) ----------
     function computeTreeHeight(n) {
       const ch = childrenOf(n.id);
       const myH = n.h || 38;
@@ -617,7 +617,7 @@
     }
 
     function layoutSubtreeBranch(n, x, topY, dir) {
-      n._dir = dir;
+      n._dir = dir; // 부모 트리의 방향을 무조건 강제 상속
       n.ax = x;
       n.ay = topY + (n._sh - n.h) / 2;
       n.x = n.ax + (n.dx || 0);
@@ -1091,16 +1091,20 @@
       ensureNodeVisible(n, true);
     }
 
+    // 하위 노드 추가 시 부모의 방향(_dir)을 완벽히 계승하도록 보정
     function addChild() {
       const p = byId(selectedNodeId) || rootNode();
       if (!p) return;
+      const parentDir = p._dir || (p.side || 'right');
       const n = { 
         id: nextId++, 
         text: '', 
         parentId: p.id, 
         isRoot: false,
         colorIndex: p.isRoot ? freeColorIndex() : null, 
-        dx: 0, dy: 0, side: null, bold: false, done: false 
+        dx: 0, dy: 0, 
+        _dir: parentDir, // 부모의 방향 직접 설정
+        side: null, bold: false, done: false 
       };
       nodes.push(n);
       render();
@@ -1113,13 +1117,16 @@
       if (!cur) return;
       if (cur.isRoot) { addChild(); return; }
       const p = byId(cur.parentId);
+      const siblingDir = cur._dir || (p ? (p._dir || 'right') : 'right');
       const n = { 
         id: nextId++, 
         text: '', 
         parentId: cur.parentId, 
         isRoot: false,
         colorIndex: p && p.isRoot ? freeColorIndex() : null, 
-        dx: 0, dy: 0, side: null, bold: false, done: false 
+        dx: 0, dy: 0, 
+        _dir: siblingDir,
+        side: null, bold: false, done: false 
       };
       const idx = nodes.indexOf(cur);
       nodes.splice(idx + 1, 0, n);
