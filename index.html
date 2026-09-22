@@ -63,25 +63,29 @@
     }
     .card-del-btn:hover { background: #fee2e2; color: #ef4444; border-color: #fca5a5; font-weight: 700; }
 
-    /* ---------- 마인드맵 캔버스 화면 ---------- */
+    /* ---------- 마인드맵 캔버스 화면 (초슬림 툴바) ---------- */
     #toolbar {
-      position: fixed; top: 10px; left: 10px; z-index: 1000;
-      background: #ffffff; padding: 8px 12px; border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-      display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 8px 12px;
-      font-size: 13px; color: #475569; user-select: none;
-      max-width: calc(100vw - 20px); align-items: center; scrollbar-width: none;
+      position: fixed; top: 8px; left: 8px; z-index: 1000;
+      background: #ffffff; padding: 5px 8px; border-radius: 8px;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+      display: flex; flex-wrap: nowrap; overflow-x: auto; gap: 4px 6px;
+      font-size: 12px; color: #475569; user-select: none;
+      max-width: calc(100vw - 16px); align-items: center; scrollbar-width: none;
     }
     #toolbar::-webkit-scrollbar { display: none; }
-    #toolbar .item { cursor: pointer; white-space: nowrap; padding: 3px 6px; border-radius: 4px; }
+    #toolbar .item { 
+      cursor: pointer; white-space: nowrap; padding: 2px 4px; border-radius: 4px; 
+      display: inline-flex; align-items: center;
+    }
     #toolbar .item:active, #toolbar .item:hover { color: #0284c7; background: #f0f9ff; }
-    #toolbar .sep { width: 1px; height: 16px; background: #e2e8f0; flex-shrink: 0; }
+    #toolbar .sep { width: 1px; height: 13px; background: #e2e8f0; flex-shrink: 0; margin: 0 1px; }
     .kbd {
-      background: #e2e8f0; border-radius: 4px; padding: 1px 5px;
-      font-family: Consolas, monospace; font-size: 11px; color: #1e293b; margin-right: 3px;
+      background: #e2e8f0; border-radius: 3px; padding: 1px 3px;
+      font-family: Consolas, monospace; font-size: 10px; color: #1e293b; margin-right: 2px;
     }
     #sync-status {
-      font-weight: 600; color: #10b981; display: flex; align-items: center; gap: 4px; white-space: nowrap;
+      font-weight: 600; color: #10b981; display: flex; align-items: center; gap: 3px; 
+      white-space: nowrap; font-size: 11px; margin-left: 2px;
     }
     #viewport { position: absolute; inset: 0; overflow: hidden; cursor: grab; }
     #viewport.panning { cursor: grabbing; }
@@ -116,7 +120,6 @@
       display: inline-block;
     }
 
-    /* 노드 테두리 밀착형 미니 체크 배지 */
     .leaf-check-badge {
       position: absolute; width: 16px; height: 16px; border-radius: 50%;
       background: #ffffff; border: 1.5px solid #94a3b8;
@@ -252,27 +255,25 @@
     </div>
   </div>
 
-  <!-- 2. 마인드맵 작업 캔버스 화면 -->
+  <!-- 2. 마인드맵 작업 캔버스 화면 (컴팩트 툴바) -->
   <div id="toolbar">
-    <span class="item" id="btn-go-home" style="color:#0284c7; font-weight:bold;">🏠 홈으로</span>
+    <span class="item" id="btn-go-home" style="color:#0284c7; font-weight:bold;">🏠 홈</span>
     <span class="sep"></span>
-    <span class="item" data-action="child"><span class="kbd">Tab</span>하위 추가</span>
-    <span class="item" data-action="sibling"><span class="kbd">Enter</span>동일레벨 추가</span>
+    <span class="item" data-action="child"><span class="kbd">Tab</span>하위</span>
+    <span class="item" data-action="sibling"><span class="kbd">↵</span>동일</span>
     <span class="item" data-action="edit"><span class="kbd">F2</span>수정</span>
-    <span class="item" data-action="flipDir"><span class="kbd">X</span>좌/우 전환</span>
     <span class="item" data-action="delete"><span class="kbd">Del</span>삭제</span>
-    <span class="item" data-action="undo"><span class="kbd">Ctrl+Z</span>취소</span>
-    <span class="item" data-action="redo"><span class="kbd">Ctrl+Y</span>복구</span>
+    <span class="item" data-action="undo"><span class="kbd">^Z</span>취소</span>
+    <span class="item" data-action="redo"><span class="kbd">^Y</span>복구</span>
     <span class="sep"></span>
-    <span class="item" data-action="root"><span class="kbd">F6</span>중심으로</span>
-    <span class="item" data-action="resetSel"><span class="kbd">A</span>가지 정렬</span>
-    <span class="item" data-action="resetAll"><span class="kbd">Shift+A</span>전체 정렬</span>
-    <span class="item" data-action="clearChecks" style="color:#059669;"><span class="kbd">Shift+C</span>체크 해제</span>
+    <span class="item" data-action="root"><span class="kbd">F6</span>중심</span>
+    <span class="item" data-action="resetAll"><span class="kbd">⇧A</span>정렬</span>
+    <span class="item" data-action="clearChecks" style="color:#059669;"><span class="kbd">⇧C</span>체크해제</span>
     <span class="sep"></span>
-    <span class="item" id="btn-list" style="color:#4f46e5; font-weight:bold;">📂 목록</span>
-    <span class="item" id="btn-new-map" style="color:#059669; font-weight:bold;">➕ 새 맵</span>
-    <span class="item" id="btn-copy-link" style="color:#0284c7; font-weight:bold;">🔗 주소 복사</span>
-    <span id="sync-status">● 대기 중</span>
+    <span class="item" id="btn-list" style="color:#4f46e5; font-weight:bold;">📂</span>
+    <span class="item" id="btn-new-map" style="color:#059669; font-weight:bold;">➕</span>
+    <span class="item" id="btn-copy-link" style="color:#0284c7; font-weight:bold;">🔗 복사</span>
+    <span id="sync-status">●</span>
   </div>
 
   <div id="viewport">
@@ -457,7 +458,7 @@
 
     function pushToCloud() {
       if (isRemoteUpdating || !mapRef) return;
-      syncStatus.textContent = '● 저장 중...';
+      syncStatus.textContent = '● 저장중';
       syncStatus.style.color = '#f59e0b';
       const root = rootNode();
       mapRef.set({
@@ -467,10 +468,10 @@
         updatedAt: firebase.database.ServerValue.TIMESTAMP
       }).then(() => {
         isExistingMap = true;
-        syncStatus.textContent = '● 실시간 동기화됨';
+        syncStatus.textContent = '● 동기화';
         syncStatus.style.color = '#10b981';
       }).catch(err => {
-        syncStatus.textContent = '● 동기화 오류';
+        syncStatus.textContent = '● 오류';
         syncStatus.style.color = '#ef4444';
       });
     }
@@ -491,7 +492,7 @@
             centerOnNode(rootNode(), false);
             requestAnimationFrame(() => { world.classList.add('ready'); });
           }
-          syncStatus.textContent = '● 실시간 동기화됨';
+          syncStatus.textContent = '● 동기화';
           syncStatus.style.color = '#10b981';
           isRemoteUpdating = false;
         } else {
@@ -502,7 +503,7 @@
           render();
           centerOnNode(rootNode(), false);
           requestAnimationFrame(() => { world.classList.add('ready'); });
-          syncStatus.textContent = '● 새 마인드맵 (편집 시 자동 저장)';
+          syncStatus.textContent = '● 새 맵';
           syncStatus.style.color = '#64748b';
         }
       });
@@ -713,7 +714,6 @@
       ensureNodeVisible(cur, true);
     }
 
-    // 전체 체크 해제 기능
     function clearAllChecks() {
       let hasChecked = false;
       nodes.forEach(n => {
@@ -960,8 +960,8 @@
         deltaPanX = (vw - margin) - nodeScreenRight;
       }
 
-      if (nodeScreenTop < margin + 20) {
-        deltaPanY = (margin + 20) - nodeScreenTop;
+      if (nodeScreenTop < margin + 10) {
+        deltaPanY = (margin + 10) - nodeScreenTop;
       } else if (nodeScreenBottom > vh - margin) {
         deltaPanY = (vh - margin) - nodeScreenBottom;
       }
@@ -1520,7 +1520,6 @@
       if ((e.ctrlKey && (k === 'y' || k === 'Y')) || (e.ctrlKey && e.shiftKey && (k === 'z' || k === 'Z'))) { e.preventDefault(); redo(); return; }
       if (e.ctrlKey || e.altKey || e.metaKey) return;
 
-      // Shift+C: 전체 체크 해제
       if (e.shiftKey && (k === 'c' || k === 'C')) { e.preventDefault(); clearAllChecks(); return; }
 
       if (k === 'Escape' || k === 'Home' || k === '1') { e.preventDefault(); goRoot(); return; }
@@ -1564,15 +1563,10 @@
       if (a === 'child') addChild();
       else if (a === 'sibling') addSibling();
       else if (a === 'edit') startEdit();
-      else if (a === 'flipDir') flipDirection();
       else if (a === 'delete') deleteNode();
       else if (a === 'undo') undo();
       else if (a === 'redo') redo();
       else if (a === 'root') goRoot();
-      else if (a === 'resetSel') {
-        const cur = byId(selectedNodeId);
-        if (cur) resetOffsets(cur.id);
-      }
       else if (a === 'resetAll') resetOffsets();
       else if (a === 'clearChecks') clearAllChecks();
     });
