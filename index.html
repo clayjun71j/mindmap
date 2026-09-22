@@ -599,7 +599,7 @@
       return `<span class="node-label">${safeLabel}</span>`;
     }
 
-    // ---------- 레이아웃 엔진 (방향 상속 완벽 고정) ----------
+    // ---------- 완벽한 상대적 부모-자식 레이아웃 엔진 ----------
     function computeTreeHeight(n) {
       const ch = childrenOf(n.id);
       const myH = n.h || 38;
@@ -616,10 +616,9 @@
       return n._sh;
     }
 
-    function layoutSubtreeBranch(n, x, topY, dir) {
-      n._dir = dir; // 부모 트리의 방향을 무조건 강제 상속
-      n.ax = x;
-      n.ay = topY + (n._sh - n.h) / 2;
+    // 모든 자식 노드가 '직속 부모'의 실제 위치(x, y)에 상대적으로 정렬되도록 전면 개선
+    function layoutSubtreeBranch(n, dir) {
+      n._dir = dir;
       n.x = n.ax + (n.dx || 0);
       n.y = n.ay + (n.dy || 0);
 
@@ -632,14 +631,18 @@
       }
       childTotalH += V_GAP * (ch.length - 1);
 
-      let curTop = (n.ay + n.h / 2) - childTotalH / 2;
+      // 자식들의 시작 세로 위치: '직속 부모'의 중심(n.y + n.h/2)을 정확히 기준으로 잡음!
+      let curTop = (n.y + n.h / 2) - childTotalH / 2;
 
       for (let i = 0; i < ch.length; i++) {
         const nextX = dir === 'right' 
-          ? (n.ax + n.w + H_GAP) 
-          : (n.ax - H_GAP - (ch[i].w || 60));
+          ? (n.x + n.w + H_GAP) 
+          : (n.x - H_GAP - (ch[i].w || 60));
 
-        layoutSubtreeBranch(ch[i], nextX, curTop, dir);
+        ch[i].ax = nextX;
+        ch[i].ay = curTop + (ch[i]._sh - ch[i].h) / 2;
+        
+        layoutSubtreeBranch(ch[i], dir);
         curTop += ch[i]._sh + V_GAP;
       }
     }
@@ -670,31 +673,36 @@
         }
       });
 
+      // 1단계 우측 브랜치 배치
       if (rightBranches.length > 0) {
         let rightTotalH = 0;
         rightBranches.forEach(c => { rightTotalH += c._sh; });
         rightTotalH += V_GAP * (rightBranches.length - 1);
 
-        let curTop = (r.ay + r.h / 2) - rightTotalH / 2;
-        const rightStartX = r.ax + r.w + H_GAP;
+        let curTop = (r.y + r.h / 2) - rightTotalH / 2;
+        const rightStartX = r.x + r.w + H_GAP;
 
         rightBranches.forEach(c => {
-          layoutSubtreeBranch(c, rightStartX, curTop, 'right');
+          c.ax = rightStartX;
+          c.ay = curTop + (c._sh - c.h) / 2;
+          layoutSubtreeBranch(c, 'right');
           curTop += c._sh + V_GAP;
         });
       }
 
+      // 1단계 좌측 브랜치 배치
       if (leftBranches.length > 0) {
         let leftTotalH = 0;
         leftBranches.forEach(c => { leftTotalH += c._sh; });
         leftTotalH += V_GAP * (leftBranches.length - 1);
 
-        let curTop = (r.ay + r.h / 2) - leftTotalH / 2;
-        const leftStartX = r.ax - H_GAP;
+        let curTop = (r.y + r.h / 2) - leftTotalH / 2;
+        const leftStartX = r.x - H_GAP;
 
         leftBranches.forEach(c => {
-          const targetX = leftStartX - (c.w || 60);
-          layoutSubtreeBranch(c, targetX, curTop, 'left');
+          c.ax = leftStartX - (c.w || 60);
+          c.ay = curTop + (c._sh - c.h) / 2;
+          layoutSubtreeBranch(c, 'left');
           curTop += c._sh + V_GAP;
         });
       }
@@ -1091,7 +1099,7 @@
       ensureNodeVisible(n, true);
     }
 
-    // 하위 노드 추가 시 부모의 방향(_dir)을 완벽히 계승하도록 보정
+    // 신규 노드 추가: 직속 부모의 방향과 현재 상대적 중심점을 기준으로 생성
     function addChild() {
       const p = byId(selectedNodeId) || rootNode();
       if (!p) return;
@@ -1103,7 +1111,7 @@
         isRoot: false,
         colorIndex: p.isRoot ? freeColorIndex() : null, 
         dx: 0, dy: 0, 
-        _dir: parentDir, // 부모의 방향 직접 설정
+        _dir: parentDir,
         side: null, bold: false, done: false 
       };
       nodes.push(n);
