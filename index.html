@@ -267,6 +267,7 @@
     <span class="item" data-action="root"><span class="kbd">F6</span>중심으로</span>
     <span class="item" data-action="resetSel"><span class="kbd">A</span>가지 정렬</span>
     <span class="item" data-action="resetAll"><span class="kbd">Shift+A</span>전체 정렬</span>
+    <span class="item" data-action="clearChecks" style="color:#059669;"><span class="kbd">Shift+C</span>체크 해제</span>
     <span class="sep"></span>
     <span class="item" id="btn-list" style="color:#4f46e5; font-weight:bold;">📂 목록</span>
     <span class="item" id="btn-new-map" style="color:#059669; font-weight:bold;">➕ 새 맵</span>
@@ -712,6 +713,21 @@
       ensureNodeVisible(cur, true);
     }
 
+    // 전체 체크 해제 기능
+    function clearAllChecks() {
+      let hasChecked = false;
+      nodes.forEach(n => {
+        if (n.done) {
+          n.done = false;
+          hasChecked = true;
+        }
+      });
+      if (hasChecked) {
+        saveState();
+        render();
+      }
+    }
+
     let lastClickTime = 0;
     let lastClickedNodeId = null;
 
@@ -787,13 +803,11 @@
       if (!(isEditing && editingId === n.id)) {
         el.innerHTML = formatNodeHTML(n.text);
 
-        // 자식이 없는 제일 마지막 노드에만 밀착형 체크 배지 부착
         if (isLeaf) {
           const chk = document.createElement('div');
           chk.className = 'leaf-check-badge' + (n.done ? ' checked' : '');
           chk.title = n.done ? '완료 취소' : '완료 표시';
 
-          // 오른쪽 가지는 우측 끝에 밀착, 왼쪽 가지는 좌측 끝에 밀착
           if (n._dir === 'left') {
             chk.style.left = '-7px';
             chk.style.right = 'auto';
@@ -1506,6 +1520,9 @@
       if ((e.ctrlKey && (k === 'y' || k === 'Y')) || (e.ctrlKey && e.shiftKey && (k === 'z' || k === 'Z'))) { e.preventDefault(); redo(); return; }
       if (e.ctrlKey || e.altKey || e.metaKey) return;
 
+      // Shift+C: 전체 체크 해제
+      if (e.shiftKey && (k === 'c' || k === 'C')) { e.preventDefault(); clearAllChecks(); return; }
+
       if (k === 'Escape' || k === 'Home' || k === '1') { e.preventDefault(); goRoot(); return; }
       if (k === 'Tab') { e.preventDefault(); addChild(); return; }
       if (k === 'Enter') { e.preventDefault(); addSibling(); return; }
@@ -1557,6 +1574,7 @@
         if (cur) resetOffsets(cur.id);
       }
       else if (a === 'resetAll') resetOffsets();
+      else if (a === 'clearChecks') clearAllChecks();
     });
 
     // 모달 목록 관리
